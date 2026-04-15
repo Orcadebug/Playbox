@@ -44,7 +44,7 @@ export function Sidebar() {
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={item.href as any}
                 className={[
                   "block rounded-2xl border p-4 transition",
                 active
