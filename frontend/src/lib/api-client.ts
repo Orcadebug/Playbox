@@ -442,3 +442,68 @@ export async function connectConnector(payload: ConnectorPayload): Promise<{
   };
 }
 
+export async function checkHealthz(): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE}/healthz`);
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function* streamSearch(payload: SearchPayload): AsyncGenerator<SearchResponse> {
+  if (payload.mode === "demo") {
+    yield buildMockSearch(payload.query, "Demo mode is using a seeded local corpus.");
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/search/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: payload.query,
+        top_k: 8,
+        skip_answer: payload.skipAnswer ?? false,
+      }),
+    });
+    if (!response.ok) {
+      yield buildMockSearch(payload.query);
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      yield buildMockSearch(payload.query);
+      return;
+    }
+
+    let buffer = "";
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const payload = JSON.parse(line.slice(6)) as BackendSearchPayload;
+            yield backendToSearchResponse(payload);
+          } catch {
+            // Skip invalid JSON lines
+          }
+        }
+      }
+    }
+  } catch {
+    yield buildMockSearch(payload.query);
+  }
+}
+
