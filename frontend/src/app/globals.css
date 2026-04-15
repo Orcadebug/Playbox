@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+:root {
+  --background: 6 10 24;
+  --background-soft: 10 16 38;
+  --surface: 13 20 42;
+  --surface-strong: 18 28 58;
+  --border: 67 84 126;
+  --text: 239 243 255;
+  --muted: 161 174 205;
+  --accent: 92 227 210;
+  --accent-strong: 79 171 255;
+  --warn: 255 196 87;
+  --danger: 255 124 124;
+}
+
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(92, 227, 210, 0.16), transparent 35%),
+    radial-gradient(circle at top right, rgba(79, 171, 255, 0.14), transparent 30%),
+    linear-gradient(180deg, rgb(var(--background)), rgb(var(--background-soft)));
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: rgb(var(--text));
+  background: transparent;
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+.font-display {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+}
+
+.font-body {
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(92, 227, 210, 0.28);
+  color: rgb(var(--text));
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.glass-card {
+  border: 1px solid rgba(var(--border), 0.4);
+  background:
+    linear-gradient(180deg, rgba(17, 25, 49, 0.92), rgba(9, 14, 31, 0.84));
+  box-shadow:
+    0 20px 80px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(16px);
+}
+
+.grid-noise {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
