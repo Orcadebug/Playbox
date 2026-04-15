@@ -451,10 +451,9 @@ export async function checkHealthz(): Promise<boolean> {
   }
 }
 
-export async function* streamSearch(payload: SearchPayload): AsyncGenerator<SearchResponse> {
+export async function streamSearch(payload: SearchPayload): Promise<SearchResponse> {
   if (payload.mode === "demo") {
-    yield buildMockSearch(payload.query, "Demo mode is using a seeded local corpus.");
-    return;
+    return buildMockSearch(payload.query, "Demo mode is using a seeded local corpus.");
   }
 
   try {
@@ -470,17 +469,16 @@ export async function* streamSearch(payload: SearchPayload): AsyncGenerator<Sear
       }),
     });
     if (!response.ok) {
-      yield buildMockSearch(payload.query);
-      return;
+      return buildMockSearch(payload.query);
     }
 
     const reader = response.body?.getReader();
     if (!reader) {
-      yield buildMockSearch(payload.query);
-      return;
+      return buildMockSearch(payload.query);
     }
 
     let buffer = "";
+    let lastResponse: SearchResponse | null = null;
     const decoder = new TextDecoder();
 
     while (true) {
@@ -495,15 +493,17 @@ export async function* streamSearch(payload: SearchPayload): AsyncGenerator<Sear
         if (line.startsWith("data: ")) {
           try {
             const payload = JSON.parse(line.slice(6)) as BackendSearchPayload;
-            yield backendToSearchResponse(payload);
+            lastResponse = backendToSearchResponse(payload);
           } catch {
             // Skip invalid JSON lines
           }
         }
       }
     }
+
+    return lastResponse ?? buildMockSearch(payload.query);
   } catch {
-    yield buildMockSearch(payload.query);
+    return buildMockSearch(payload.query);
   }
 }
 

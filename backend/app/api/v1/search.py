@@ -3,6 +3,7 @@ import json
 
 from fastapi import APIRouter, Body, Depends
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
@@ -11,34 +12,42 @@ from app.services.search import SearchService
 router = APIRouter()
 
 
+class SearchRequest(BaseModel):
+    query: str
+    top_k: int = Field(default=10, le=100, ge=1)
+    source_ids: list[str] | None = None
+    workspace_id: str = "default"
+    skip_answer: bool = False
+
+
 @router.post("")
 async def search(
-    payload: dict = Body(...),
+    payload: SearchRequest = Body(...),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     service = SearchService(session)
     return await service.search(
-        query=payload["query"],
-        top_k=payload.get("top_k", 10),
-        source_ids=payload.get("source_ids"),
-        workspace_id=payload.get("workspace_id", "default"),
-        skip_answer=payload.get("skip_answer", False),
+        query=payload.query,
+        top_k=payload.top_k,
+        source_ids=payload.source_ids,
+        workspace_id=payload.workspace_id,
+        skip_answer=payload.skip_answer,
     )
 
 
 @router.post("/stream")
 async def search_stream(
-    payload: dict = Body(...),
+    payload: SearchRequest = Body(...),
     session: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
     service = SearchService(session)
 
     async def event_stream() -> AsyncIterator[str]:
         result = await service.search(
-            query=payload["query"],
-            top_k=payload.get("top_k", 10),
-            source_ids=payload.get("source_ids"),
-            workspace_id=payload.get("workspace_id", "default"),
+            query=payload.query,
+            top_k=payload.top_k,
+            source_ids=payload.source_ids,
+            workspace_id=payload.workspace_id,
             skip_answer=False,
         )
         answer = result.get("answer") or {}

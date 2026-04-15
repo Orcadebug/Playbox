@@ -1,9 +1,12 @@
 from collections.abc import Sequence
+import logging
 
 import httpx
 
 from app.answer.prompts import build_answer_messages
 from app.config import get_settings
+
+_log = logging.getLogger(__name__)
 
 
 class AnswerGenerator:
@@ -20,7 +23,8 @@ class AnswerGenerator:
         try:
             return await self._openrouter_answer(query, results), None
         except Exception as exc:  # pragma: no cover - network/credential errors
-            return self._fallback_answer(query, results), str(exc)
+            _log.error("Answer generation failed", exc_info=exc)
+            return self._fallback_answer(query, results), "Answer generation unavailable"
 
     async def _openrouter_answer(self, query: str, results: Sequence[dict]) -> dict:
         messages = build_answer_messages(query, results)

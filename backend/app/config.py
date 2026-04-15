@@ -18,6 +18,17 @@ class Settings(BaseSettings):
     default_workspace: str = "default"
     model_dir: str = "models"
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    max_upload_bytes: int = 50 * 1024 * 1024  # 50 MB
+    allowed_media_types: set[str] = Field(
+        default_factory=lambda: {
+            "text/plain",
+            "text/markdown",
+            "text/csv",
+            "application/json",
+            "application/pdf",
+            "text/html",
+        }
+    )
 
     @classmethod
     def parse_env_var(cls, field_name: str, raw_value: Any) -> Any:

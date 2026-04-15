@@ -25,7 +25,7 @@ def chunk_document(document: ParsedDocument, max_tokens: int = 500, overlap: int
     if overlap < 0:
         raise ValueError("overlap cannot be negative")
     if overlap >= max_tokens:
-        step = 1
+        step = max(1, max_tokens // 2)
     else:
         step = max_tokens - overlap
 
