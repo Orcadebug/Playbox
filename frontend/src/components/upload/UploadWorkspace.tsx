@@ -42,7 +42,7 @@ export function UploadWorkspace() {
     setBusy(true);
     try {
       setStatus("Sending pasted content...");
-      const response = await uploadDocuments({ rawText: value });
+      const response = await uploadDocuments({ text: value });
       setStatus(response.notice);
       mergeUploaded(response.sources);
     } finally {

@@ -78,7 +78,7 @@ export function SearchWorkspace({
 
   const effectiveResults = response?.results ?? [];
   const citations = response?.answer?.citations ?? [];
-  const answerNotice = response?.answerError ?? (response?.fallback ? response.notice : undefined);
+  const answerNotice = response?.fallback ? response?.notice : undefined;
 
   return (
     <div className="space-y-6">
@@ -134,7 +134,7 @@ export function SearchWorkspace({
               },
               {
                 label: "Sources",
-                value: String(response?.sources.length ?? 0),
+                value: String(response?.results.length ?? 0),
               },
               {
                 label: "Mode",
