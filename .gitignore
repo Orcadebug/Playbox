@@ -20,4 +20,5 @@ backend/.venv/
 backend/models/
 frontend/.next/
 frontend/node_modules/
+CLAUDE.md
 

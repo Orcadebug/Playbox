@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Iterator
 from dataclasses import replace
-from typing import Iterable
 
 from app.parsers.base import ParsedDocument
 from app.schemas.documents import Chunk
-
 
 _TOKEN_RE = re.compile(r"\S+")
 
@@ -64,3 +63,15 @@ def chunk_documents(documents: Iterable[ParsedDocument], max_tokens: int = 500, 
     for document in documents:
         chunks.extend(chunk_document(document, max_tokens=max_tokens, overlap=overlap))
     return chunks
+
+
+def chunk_documents_iter(
+    documents: Iterable[ParsedDocument],
+    max_tokens: int = 500,
+    overlap: int = 50,
+) -> Iterator[Chunk]:
+    """Generator variant — yields chunks one at a time to avoid materialising
+    the full list in memory. Useful for large corpora (10K+ documents)."""
+
+    for document in documents:
+        yield from chunk_document(document, max_tokens=max_tokens, overlap=overlap)

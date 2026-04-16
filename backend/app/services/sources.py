@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from app.models import Document, Source
 from app.parsers.base import ParsedDocument
 from app.parsers.detector import detect_and_parse
+from app.services.search import invalidate_workspace_cache
 
 
 class SourceService:
@@ -51,10 +52,12 @@ class SourceService:
         rows = await self.session.scalars(query)
         return [self._serialize_source(source) for source in rows.all()]
 
-    async def delete_source(self, source_id: str) -> bool:
+    async def delete_source(self, source_id: str, workspace_id: str = "default") -> bool:
         statement = delete(Source).where(Source.id == source_id)
         result = await self.session.execute(statement)
         await self.session.commit()
+        if result.rowcount:
+            invalidate_workspace_cache(workspace_id)
         return bool(result.rowcount)
 
     async def _persist_parsed_file(
@@ -91,6 +94,7 @@ class SourceService:
 
         await self.session.commit()
         await self.session.refresh(source)
+        invalidate_workspace_cache(workspace_id)
         return self._serialize_source(source, document_count=len(documents))
 
     def _serialize_source(self, source: Source, document_count: int | None = None) -> dict[str, Any]:

@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from collections.abc import AsyncIterator
-import json
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends
 from fastapi.responses import StreamingResponse
@@ -17,7 +19,7 @@ class SearchRequest(BaseModel):
     top_k: int = Field(default=10, le=100, ge=1)
     source_ids: list[str] | None = None
     workspace_id: str = "default"
-    skip_answer: bool = False
+    connector_configs: list[dict[str, Any]] | None = None
 
 
 @router.post("")
@@ -31,7 +33,7 @@ async def search(
         top_k=payload.top_k,
         source_ids=payload.source_ids,
         workspace_id=payload.workspace_id,
-        skip_answer=payload.skip_answer,
+        connector_configs=payload.connector_configs,
     )
 
 
@@ -43,20 +45,13 @@ async def search_stream(
     service = SearchService(session)
 
     async def event_stream() -> AsyncIterator[str]:
-        result = await service.search(
+        async for chunk in service.stream_search(
             query=payload.query,
             top_k=payload.top_k,
             source_ids=payload.source_ids,
             workspace_id=payload.workspace_id,
-            skip_answer=False,
-        )
-        answer = result.get("answer") or {}
-        text = answer.get("markdown", "")
-        yield f"event: meta\ndata: {json.dumps({k: v for k, v in result.items() if k != 'answer'})}\n\n"
-        if text:
-            for token in text.split():
-                yield f"event: token\ndata: {json.dumps({'token': token + ' '})}\n\n"
-        yield f"event: done\ndata: {json.dumps(result)}\n\n"
+            connector_configs=payload.connector_configs,
+        ):
+            yield chunk
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
-
