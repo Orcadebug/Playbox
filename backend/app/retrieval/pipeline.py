@@ -12,10 +12,11 @@ from app.parsers.base import (
     build_default_parser_registry,
 )
 from app.parsers.plaintext import PlainTextParser
-from app.retrieval.bm25 import BM25Index, BM25ScoredChunk
+from app.retrieval.bm25 import BM25ScoredChunk
 from app.retrieval.bm25_cache import BM25IndexCache
 from app.retrieval.chunker import chunk_documents, chunk_documents_iter
 from app.retrieval.reranker import AutoReranker, Reranker
+from app.retrieval.retriever import Bm25Retriever, Retriever
 from app.schemas.search import SearchDocument, SearchResult
 
 _log = logging.getLogger(__name__)
@@ -26,6 +27,22 @@ def _snippet(text: str, limit: int = 280) -> str:
     if len(collapsed) <= limit:
         return collapsed
     return collapsed[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _metadata_spans(metadata: dict[str, object]) -> list[tuple[int, int]] | None:
+    raw_spans = metadata.get("spans")
+    if not isinstance(raw_spans, list):
+        return None
+    spans: list[tuple[int, int]] = []
+    for item in raw_spans:
+        if (
+            isinstance(item, (tuple, list))
+            and len(item) == 2
+            and isinstance(item[0], int)
+            and isinstance(item[1], int)
+        ):
+            spans.append((item[0], item[1]))
+    return spans or None
 
 
 def _make_default_reranker() -> AutoReranker:
@@ -57,7 +74,12 @@ class RetrievalPipeline:
     chunk_overlap: int = 50
     bm25_candidates: int = 100
     bm25_cache: BM25IndexCache | None = None
+    retriever: Retriever | None = None
     confidence_threshold: float = 0.85
+
+    def __post_init__(self) -> None:
+        if self.retriever is None:
+            self.retriever = Bm25Retriever(cache=self.bm25_cache)
 
     def search(
         self,
@@ -81,14 +103,13 @@ class RetrievalPipeline:
         if not chunks:
             return []
 
-        # BM25 first stage — use cache when available.
-        if self.bm25_cache is not None:
-            index = self.bm25_cache.get_or_build(workspace_id, chunks)
-        else:
-            index = BM25Index(chunks)
-
-        bm25_hits = index.search(query, top_k=self.bm25_candidates)
-        reranked = self.reranker.rerank(query, bm25_hits, top_k=top_k)
+        first_stage_hits = self.retriever.search(
+            query,
+            chunks,
+            top_k=self.bm25_candidates,
+            workspace_id=workspace_id,
+        )
+        reranked = self.reranker.rerank(query, first_stage_hits, top_k=top_k)
         results = [self._to_search_result(hit) for hit in reranked[:top_k]]
 
         # Early exit: if top result has very high confidence and a wide gap to #2,
@@ -154,4 +175,5 @@ class RetrievalPipeline:
             ),
             bm25_score=hit.bm25_score if hit.bm25_score is not None else hit.score,
             rerank_score=hit.rerank_score if hit.rerank_score is not None else hit.score,
+            spans=_metadata_spans(metadata),
         )

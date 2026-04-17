@@ -2,19 +2,31 @@ from __future__ import annotations
 
 import threading
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
+from scipy import sparse
 
-from app.retrieval.bm25 import BM25Index, BM25Tokenizer, _STEMMER_AVAILABLE
+from app.config import Settings
+from app.retrieval.bm25 import _STEMMER_AVAILABLE, BM25Index, BM25Tokenizer
 from app.retrieval.bm25_cache import BM25IndexCache
 from app.retrieval.chunker import chunk_document, chunk_documents, chunk_documents_iter
 from app.retrieval.pipeline import RetrievalPipeline
+from app.retrieval.query_patterns import build_query_patterns
 from app.retrieval.reranker import AutoReranker, HeuristicReranker
+from app.retrieval.retriever import Bm25Retriever
+from app.retrieval.sparse_projection import (
+    NullProjection,
+    ProjectionConfig,
+    SparseProjection,
+    load_projection,
+    save_projection,
+)
+from app.retrieval.trie import Pattern, QueryTrie
 from app.schemas.documents import ParsedDocument, SourceLocation
 from app.schemas.search import SearchDocument
-
 
 # ---------------------------------------------------------------------------
 # Chunker tests
@@ -112,7 +124,10 @@ def test_bm25_index_ranks_relevant_chunk_first() -> None:
 def test_bm25_heap_search_matches_sort_results() -> None:
     """Heap-based top-k must return the same results as a naive full sort."""
     docs = [
-        ParsedDocument(content=f"document about topic {i} billing refund", source_name=f"doc{i}.txt")
+        ParsedDocument(
+            content=f"document about topic {i} billing refund",
+            source_name=f"doc{i}.txt",
+        )
         for i in range(20)
     ]
     all_chunks = []
@@ -125,6 +140,136 @@ def test_bm25_heap_search_matches_sort_results() -> None:
     # Verify scores are in descending order
     scores = [h.score for h in top5]
     assert scores == sorted(scores, reverse=True)
+
+
+# ---------------------------------------------------------------------------
+# Retriever protocol tests
+# ---------------------------------------------------------------------------
+
+def test_retriever_protocol_bm25_default_unchanged() -> None:
+    chunks = _make_chunks(4)
+    direct = BM25Index(chunks).search("billing refund", top_k=3)
+    via_retriever = Bm25Retriever().search(
+        "billing refund",
+        chunks,
+        top_k=3,
+        workspace_id="test-ws",
+    )
+    assert [hit.chunk.chunk_id for hit in via_retriever] == [
+        hit.chunk.chunk_id for hit in direct
+    ]
+    assert [hit.score for hit in via_retriever] == [hit.score for hit in direct]
+
+
+def test_retriever_flag_rejects_unknown() -> None:
+    with pytest.raises(ValidationError):
+        Settings(waver_retriever="unknown")
+
+
+# ---------------------------------------------------------------------------
+# Query trie tests
+# ---------------------------------------------------------------------------
+
+def _single_chunk(content: str):
+    return chunk_document(ParsedDocument(content=content, source_name="doc.txt"), max_tokens=50)[0]
+
+
+def test_trie_literal_token_hit() -> None:
+    chunk = _single_chunk("Customer reported a Billing problem.")
+    trie = QueryTrie([Pattern(id=0, body="billing", weight=1.0, kind="token")])
+
+    hits = list(trie.scan(chunk))
+
+    assert len(hits) == 1
+    assert hits[0].chunk_id == chunk.chunk_id
+    assert chunk.text[hits[0].start : hits[0].end] == "Billing"
+
+
+def test_trie_phrase_scores_higher_than_tokens() -> None:
+    trie = QueryTrie(build_query_patterns("billing complaint"))
+    phrase_chunk = _single_chunk("The billing complaint arrived yesterday.")
+    token_chunk = _single_chunk("The billing note followed a separate complaint.")
+
+    assert trie.score_chunk(phrase_chunk) > trie.score_chunk(token_chunk)
+
+
+def test_trie_overlapping_matches_merged() -> None:
+    chunk = _single_chunk("billing complaint")
+    trie = QueryTrie(build_query_patterns("billing complaint"))
+
+    assert trie.spans_for_chunk(chunk) == [(0, len("billing complaint"))]
+
+
+def test_trie_span_offsets_valid() -> None:
+    chunk = _single_chunk("Acme opened a Billing Complaint yesterday.")
+    patterns = build_query_patterns("billing complaint")
+    trie = QueryTrie(patterns)
+    pattern_by_id = {pattern.id: pattern for pattern in patterns}
+
+    for hit in trie.scan(chunk):
+        pattern = pattern_by_id[hit.pattern_id]
+        assert chunk.text[hit.start : hit.end].lower() == pattern.body
+
+
+def test_trie_phrase_requires_boundaries() -> None:
+    trie = QueryTrie(build_query_patterns("billing complaint"))
+    chunk = _single_chunk("rebilling complaintx")
+
+    assert list(trie.scan(chunk)) == []
+    assert trie.score_chunk(chunk) == 0.0
+
+
+def test_trie_pattern_cap_enforced() -> None:
+    patterns = build_query_patterns(" ".join(f"token{i}" for i in range(20)), max_patterns=5)
+
+    assert len(patterns) == 5
+
+
+# ---------------------------------------------------------------------------
+# Sparse projection tests
+# ---------------------------------------------------------------------------
+
+def test_projection_loads_or_falls_back(tmp_path) -> None:
+    config = ProjectionConfig(hash_features=16, dim=4)
+    projection = load_projection(tmp_path / "missing.npz", config)
+
+    assert isinstance(projection, NullProjection)
+    chunk_vecs = projection.encode_chunks([_single_chunk("billing refund")])
+    scores = projection.score(projection.encode_query("billing"), chunk_vecs)
+    assert scores.tolist() == [0.0]
+
+
+def test_projection_cosine_shape(tmp_path) -> None:
+    config = ProjectionConfig(hash_features=16, dim=16)
+    path = tmp_path / "projection.npz"
+    save_projection(path, sparse.eye(config.hash_features, config.dim, format="csr"), config)
+    projection = SparseProjection.load(path)
+
+    query_vec = projection.encode_query("billing refund")
+    chunk_vecs = projection.encode_chunks(
+        [_single_chunk("billing refund request"), _single_chunk("shipping delay")]
+    )
+    scores = projection.score(query_vec, chunk_vecs)
+
+    assert query_vec.shape == (config.dim,)
+    assert chunk_vecs.shape == (2, config.dim)
+    assert scores.shape == (2,)
+    assert np.all(scores >= 0)
+
+
+def test_projection_teacher_correlation() -> None:
+    config = ProjectionConfig(hash_features=64, dim=64)
+    projection = SparseProjection(
+        sparse.eye(config.hash_features, config.dim, format="csr"),
+        config,
+    )
+    query_vec = projection.encode_query("billing refund")
+    chunk_vecs = projection.encode_chunks(
+        [_single_chunk("billing refund request"), _single_chunk("shipping warehouse delay")]
+    )
+    scores = projection.score(query_vec, chunk_vecs)
+
+    assert scores[0] > scores[1]
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +373,11 @@ def test_pipeline_search_returns_rich_results_with_fallback_reranker() -> None:
         [
             SearchDocument(
                 file_name="complaints.csv",
-                content=b"customer,issue,week\nAcme,billing complaint,last week\nBeta,shipping delay,this week\n",
+                content=(
+                    b"customer,issue,week\n"
+                    b"Acme,billing complaint,last week\n"
+                    b"Beta,shipping delay,this week\n"
+                ),
                 media_type="text/csv",
                 metadata={"workspace": "demo"},
             ),
@@ -268,7 +417,7 @@ def test_auto_reranker_gracefully_falls_back_without_model() -> None:
     assert reranker.is_fallback is True
 
 
-def test_auto_reranker_fallback_on_missing_tokenizer(tmp_path: "pytest.TempPathFactory") -> None:
+def test_auto_reranker_fallback_on_missing_tokenizer(tmp_path: pytest.TempPathFactory) -> None:
     """ONNX model present but no tokenizer.json → must fall back."""
     model_file = tmp_path / "model.onnx"
     model_file.write_bytes(b"not a real model")

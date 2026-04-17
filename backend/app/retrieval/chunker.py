@@ -14,7 +14,11 @@ def tokenize_text(text: str) -> list[str]:
     return _TOKEN_RE.findall(text)
 
 
-def chunk_document(document: ParsedDocument, max_tokens: int = 500, overlap: int = 50) -> list[Chunk]:
+def chunk_document(
+    document: ParsedDocument,
+    max_tokens: int = 500,
+    overlap: int = 50,
+) -> list[Chunk]:
     tokens = tokenize_text(document.content)
     if not tokens:
         return []
@@ -29,18 +33,23 @@ def chunk_document(document: ParsedDocument, max_tokens: int = 500, overlap: int
         step = max_tokens - overlap
 
     chunks: list[Chunk] = []
+    avg_chars_per_token = len(document.content) / max(len(tokens), 1)
     for start in range(0, len(tokens), step):
         end = min(len(tokens), start + max_tokens)
         if start >= end:
             break
         chunk_tokens = tokens[start:end]
-        chunk_id = f"{document.source_name}:{document.location.page_number or 0}:{document.location.row_number or 0}:{len(chunks)}"
+        page_number = document.location.page_number or 0
+        row_number = document.location.row_number or 0
+        chunk_id = f"{document.source_name}:{page_number}:{row_number}:{len(chunks)}"
         metadata = dict(document.metadata)
         metadata.update(
             {
                 "chunk_index": len(chunks),
                 "token_start": start,
                 "token_end": end,
+                "byte_start": int(start * avg_chars_per_token),
+                "byte_end": min(len(document.content), int(end * avg_chars_per_token)),
             }
         )
         chunks.append(
@@ -55,10 +64,21 @@ def chunk_document(document: ParsedDocument, max_tokens: int = 500, overlap: int
         )
         if end == len(tokens):
             break
+    for index, chunk in enumerate(chunks):
+        adjacent_ids: list[str] = []
+        if index > 0:
+            adjacent_ids.append(chunks[index - 1].chunk_id)
+        if index + 1 < len(chunks):
+            adjacent_ids.append(chunks[index + 1].chunk_id)
+        chunk.metadata["adjacent_chunk_ids"] = adjacent_ids
     return chunks
 
 
-def chunk_documents(documents: Iterable[ParsedDocument], max_tokens: int = 500, overlap: int = 50) -> list[Chunk]:
+def chunk_documents(
+    documents: Iterable[ParsedDocument],
+    max_tokens: int = 500,
+    overlap: int = 50,
+) -> list[Chunk]:
     chunks: list[Chunk] = []
     for document in documents:
         chunks.extend(chunk_document(document, max_tokens=max_tokens, overlap=overlap))

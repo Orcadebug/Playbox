@@ -42,9 +42,17 @@ class BM25IndexCache:
     hybrid execution model since ``BM25Index.build`` is synchronous/CPU-bound.
     """
 
-    def __init__(self, ttl: float = 300.0, max_entries: int = 10) -> None:
+    def __init__(
+        self,
+        ttl: float = 300.0,
+        max_entries: int = 10,
+        use_stemming: bool = True,
+        use_stopwords: bool = True,
+    ) -> None:
         self._ttl = ttl
         self._max_entries = max_entries
+        self._use_stemming = use_stemming
+        self._use_stopwords = use_stopwords
         self._cache: dict[str, _CacheEntry] = {}
         self._access_order: list[str] = []  # LRU tracking (front = oldest)
         self._lock = threading.Lock()
@@ -75,7 +83,11 @@ class BM25IndexCache:
 
         # Build outside lock
         _log.debug("Building BM25 index for workspace %s (%d chunks)", workspace_id, len(chunks))
-        index = BM25Index(chunks)
+        index = BM25Index(
+            chunks,
+            use_stemming=self._use_stemming,
+            use_stopwords=self._use_stopwords,
+        )
 
         with self._lock:
             self._set(workspace_id, _CacheEntry(index=index, content_hash=content_hash))

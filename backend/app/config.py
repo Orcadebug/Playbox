@@ -1,5 +1,6 @@
 from functools import lru_cache
-from typing import Any
+from pathlib import Path
+from typing import Any, Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -26,6 +27,24 @@ class Settings(BaseSettings):
     bm25_cache_max_entries: int = 10
     bm25_use_stemming: bool = True
     bm25_use_stopwords: bool = True
+    waver_retriever: Literal["bm25", "cortical"] = "bm25"
+    waver_candidate_cap: int = 2000
+    waver_trie_max_patterns: int = 2000
+    waver_trie_phrase_ngram: int = 2
+    waver_trie_phrase_weight: float = 1.5
+    projection_model_path: Path | None = Path("models/projection.npz")
+    projection_dim: int = 256
+    projection_hash_features: int = 262144
+    waver_diffusion_steps: int = 3
+    waver_diffusion_beta: float = 0.5
+    waver_diffusion_gamma: float = 0.3
+    waver_diffusion_delta: float = 0.2
+    waver_gating_m: int = 80
+    waver_lambda_l: float = 0.35
+    waver_lambda_s: float = 0.35
+    waver_lambda_c: float = 0.20
+    waver_lambda_cost: float = 0.10
+    waver_adjacency_max_edges: int = 8
     confidence_threshold: float = 0.85
     streaming_chunk_threshold: int = 50
     connector_fetch_timeout: float = 10.0
@@ -53,4 +72,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

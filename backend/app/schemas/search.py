@@ -27,6 +27,7 @@ class SearchResult:
     parser_name: str | None = None
     bm25_score: float | None = None
     rerank_score: float | None = None
+    spans: list[tuple[int, int]] | None = None
 
     @property
     def text(self) -> str:

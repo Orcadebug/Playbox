@@ -11,9 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.answer.citations import attach_citation_labels
+from app.config import Settings
 from app.models import Source
 from app.retrieval.bm25_cache import BM25IndexCache
 from app.retrieval.pipeline import RetrievalPipeline, SearchDocument
+from app.retrieval.retriever import Bm25Retriever, Retriever
 
 _log = logging.getLogger(__name__)
 
@@ -25,6 +27,57 @@ _bm25_cache: BM25IndexCache | None = None
 _pipeline: RetrievalPipeline | None = None
 
 
+def _build_retriever(settings: Settings, bm25_cache: BM25IndexCache) -> Retriever:
+    if settings.waver_retriever == "bm25":
+        return Bm25Retriever(
+            cache=bm25_cache,
+            use_stemming=settings.bm25_use_stemming,
+            use_stopwords=settings.bm25_use_stopwords,
+        )
+    if settings.waver_retriever == "cortical":
+        from app.retrieval.cortical import CorticalRetriever, default_trie_builder  # noqa: PLC0415
+        from app.retrieval.diffusion import DiffusionConfig  # noqa: PLC0415
+        from app.retrieval.sparse_projection import (  # noqa: PLC0415
+            ProjectionConfig,
+            load_projection,
+        )
+
+        projection_config = ProjectionConfig(
+            hash_features=settings.projection_hash_features,
+            dim=settings.projection_dim,
+        )
+        return CorticalRetriever(
+            projection=load_projection(settings.projection_model_path, projection_config),
+            trie_builder=default_trie_builder(
+                max_patterns=settings.waver_trie_max_patterns,
+                phrase_ngram=settings.waver_trie_phrase_ngram,
+                phrase_weight=settings.waver_trie_phrase_weight,
+            ),
+            gating_m=settings.waver_gating_m,
+            lambdas=(
+                settings.waver_lambda_l,
+                settings.waver_lambda_s,
+                settings.waver_lambda_c,
+                settings.waver_lambda_cost,
+            ),
+            diffusion=DiffusionConfig(
+                steps=settings.waver_diffusion_steps,
+                beta=settings.waver_diffusion_beta,
+                gamma=settings.waver_diffusion_gamma,
+                delta=settings.waver_diffusion_delta,
+            ),
+            candidate_cap=settings.waver_candidate_cap,
+            adjacency_max_edges=settings.waver_adjacency_max_edges,
+        )
+    raise ValueError(f"Unsupported retriever: {settings.waver_retriever}")
+
+
+def _pipeline_candidate_budget(settings: Settings) -> int:
+    if settings.waver_retriever == "cortical":
+        return settings.waver_gating_m
+    return 100
+
+
 def _get_pipeline() -> RetrievalPipeline:
     global _pipeline, _bm25_cache
     if _pipeline is None:
@@ -34,9 +87,13 @@ def _get_pipeline() -> RetrievalPipeline:
         _bm25_cache = BM25IndexCache(
             ttl=settings.bm25_cache_ttl,
             max_entries=settings.bm25_cache_max_entries,
+            use_stemming=settings.bm25_use_stemming,
+            use_stopwords=settings.bm25_use_stopwords,
         )
         _pipeline = RetrievalPipeline(
             bm25_cache=_bm25_cache,
+            retriever=_build_retriever(settings, _bm25_cache),
+            bm25_candidates=_pipeline_candidate_budget(settings),
             confidence_threshold=settings.confidence_threshold,
         )
     return _pipeline
@@ -192,6 +249,7 @@ class SearchService:
             "parser_name": result.parser_name,
             "bm25_score": result.bm25_score,
             "rerank_score": result.rerank_score,
+            "spans": result.spans,
         }
 
     def _unique_sources(self, results: list[dict[str, Any]]) -> list[dict[str, str]]:
