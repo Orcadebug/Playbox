@@ -13,12 +13,41 @@ type BackendSearchPayload = {
     score: number;
     citation_label?: string;
     metadata?: Record<string, unknown>;
+    chunk_id?: string | null;
+    source_origin?: "stored" | "raw" | "connector";
+    primary_span?: BackendSearchSpan | null;
+    matched_spans?: BackendSearchSpan[];
   }>;
   answer?: {
     markdown?: string;
     confidence?: string;
   } | null;
   answer_error?: string | null;
+  source_errors?: BackendSourceError[];
+};
+
+type BackendSearchSpan = {
+  text: string;
+  snippet: string;
+  source_start: number;
+  source_end: number;
+  snippet_start: number;
+  snippet_end: number;
+  highlights: Array<{
+    start: number;
+    end: number;
+    source_start?: number;
+    source_end?: number;
+    text?: string;
+  }>;
+  location?: Record<string, unknown>;
+};
+
+type BackendSourceError = {
+  source_type: string;
+  connector_id?: string | null;
+  source_name?: string | null;
+  message: string;
 };
 
 type BackendSource = {
@@ -38,7 +67,27 @@ type UploadPayload = {
 type SearchPayload = {
   query: string;
   skipAnswer?: boolean;
+  answerMode?: "off" | "llm";
+  includeStoredSources?: boolean;
+  rawSources?: RawSearchSource[];
+  connectorConfigs?: ConnectorSearchConfig[];
   mode?: "standard" | "demo";
+};
+
+export type RawSearchSource = {
+  id?: string;
+  name: string;
+  content: string;
+  media_type?: string;
+  source_type?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type ConnectorSearchConfig = {
+  connector_id: "webhook" | "slack" | string;
+  documents?: Array<Record<string, unknown>>;
+  channels?: string[];
+  limit?: number;
 };
 
 type ConnectorPayload = {
@@ -60,6 +109,23 @@ export type SearchCitation = {
   sourceId: string;
 };
 
+export type SearchSpan = {
+  text: string;
+  snippet: string;
+  sourceStart: number;
+  sourceEnd: number;
+  snippetStart: number;
+  snippetEnd: number;
+  highlights: Array<{
+    start: number;
+    end: number;
+    sourceStart?: number;
+    sourceEnd?: number;
+    text?: string;
+  }>;
+  location?: Record<string, unknown>;
+};
+
 export type SearchResult = {
   id: string;
   title: string;
@@ -69,6 +135,9 @@ export type SearchResult = {
   snippet: string;
   score: number;
   tags: string[];
+  sourceOrigin: "stored" | "raw" | "connector";
+  primarySpan: SearchSpan | null;
+  matchedSpans: SearchSpan[];
 };
 
 export type SearchAnswer = {
@@ -83,6 +152,7 @@ export type SearchResponse = {
   results: SearchResult[];
   fallback: boolean;
   notice?: string;
+  sourceErrors: BackendSourceError[];
   metadata?: {
     backend: boolean;
   };
@@ -196,7 +266,7 @@ function buildMockSearch(query: string, notice?: string): SearchResponse {
   const ranked = demoPassages
     .map((passage) => ({
       ...passage,
-      score: scorePassage(query, `${passage.title} ${passage.text} ${passage.tags.join(" ")}`),
+    score: scorePassage(query, `${passage.title} ${passage.text} ${passage.tags.join(" ")}`),
     }))
     .filter((passage) => passage.score > 0)
     .sort((left, right) => right.score - left.score)
@@ -211,6 +281,18 @@ function buildMockSearch(query: string, notice?: string): SearchResponse {
     snippet: passage.text,
     score: Math.max(0.18, passage.score),
     tags: passage.tags,
+    sourceOrigin: "stored",
+    primarySpan: {
+      text: passage.text,
+      snippet: passage.text,
+      sourceStart: 0,
+      sourceEnd: passage.text.length,
+      snippetStart: 0,
+      snippetEnd: passage.text.length,
+      highlights: [],
+      location: { label: passage.location },
+    },
+    matchedSpans: [],
   }));
 
   const citations = results.slice(0, 3).map((result, index) => ({
@@ -236,6 +318,7 @@ function buildMockSearch(query: string, notice?: string): SearchResponse {
     results,
     fallback: true,
     notice: notice ?? "Backend unavailable. Showing mock demo data.",
+    sourceErrors: [],
     metadata: {
       backend: false,
     },
@@ -278,6 +361,28 @@ function normalizeScores(values: number[]): number[] {
   return values.map((value) => Math.max(0.12, Math.min(1, value / max)));
 }
 
+function backendSpanToSearchSpan(span?: BackendSearchSpan | null): SearchSpan | null {
+  if (!span) {
+    return null;
+  }
+  return {
+    text: span.text,
+    snippet: span.snippet,
+    sourceStart: span.source_start,
+    sourceEnd: span.source_end,
+    snippetStart: span.snippet_start,
+    snippetEnd: span.snippet_end,
+    highlights: span.highlights.map((highlight) => ({
+      start: highlight.start,
+      end: highlight.end,
+      sourceStart: highlight.source_start,
+      sourceEnd: highlight.source_end,
+      text: highlight.text,
+    })),
+    location: span.location,
+  };
+}
+
 function backendToSearchResponse(payload: BackendSearchPayload): SearchResponse {
   const normalizedScores = normalizeScores(payload.results.map((result) => result.score));
   const results: SearchResult[] = payload.results.map((result, index) => {
@@ -288,6 +393,7 @@ function backendToSearchResponse(payload: BackendSearchPayload): SearchResponse 
     const tags = [parserName, mediaType].filter(Boolean) as string[];
     return {
       id:
+        result.chunk_id ??
         result.document_id ??
         result.source_id ??
         `${result.source_name.replace(/\s+/g, "-").toLowerCase()}-${index}`,
@@ -297,9 +403,14 @@ function backendToSearchResponse(payload: BackendSearchPayload): SearchResponse 
       kind: parserName ?? mediaType ?? "document",
       sourceLabel: result.source_name,
       location: locationFromMetadata(metadata),
-      snippet: result.snippet ?? result.content,
+      snippet: result.primary_span?.snippet ?? result.snippet ?? result.content,
       score: normalizedScores[index] ?? 0.5,
       tags,
+      sourceOrigin: result.source_origin ?? "stored",
+      primarySpan: backendSpanToSearchSpan(result.primary_span),
+      matchedSpans: (result.matched_spans ?? [])
+        .map(backendSpanToSearchSpan)
+        .filter((span): span is SearchSpan => span !== null),
     };
   });
 
@@ -320,6 +431,7 @@ function backendToSearchResponse(payload: BackendSearchPayload): SearchResponse 
     results,
     fallback: Boolean(payload.answer_error),
     notice: payload.answer_error ?? undefined,
+    sourceErrors: payload.source_errors ?? [],
     metadata: {
       backend: true,
     },
@@ -354,7 +466,10 @@ export async function searchDocuments(payload: SearchPayload): Promise<SearchRes
       body: JSON.stringify({
         query: payload.query,
         top_k: 8,
-        skip_answer: payload.skipAnswer ?? false,
+        answer_mode: payload.answerMode ?? (payload.skipAnswer ? "off" : "off"),
+        include_stored_sources: payload.includeStoredSources ?? true,
+        raw_sources: payload.rawSources ?? [],
+        connector_configs: payload.connectorConfigs ?? [],
       }),
     });
     return backendToSearchResponse(backend);
@@ -465,7 +580,10 @@ export async function streamSearch(payload: SearchPayload): Promise<SearchRespon
       body: JSON.stringify({
         query: payload.query,
         top_k: 8,
-        skip_answer: payload.skipAnswer ?? false,
+        answer_mode: payload.answerMode ?? (payload.skipAnswer ? "off" : "off"),
+        include_stored_sources: payload.includeStoredSources ?? true,
+        raw_sources: payload.rawSources ?? [],
+        connector_configs: payload.connectorConfigs ?? [],
       }),
     });
     if (!response.ok) {
@@ -506,4 +624,3 @@ export async function streamSearch(payload: SearchPayload): Promise<SearchRespon
     return buildMockSearch(payload.query);
   }
 }
-

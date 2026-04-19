@@ -28,7 +28,7 @@ export function SearchBar({
           <input
             value={value}
             onChange={(event) => onChange(event.target.value)}
-            placeholder="Ask about files, logs, Slack threads, or pasted text"
+            placeholder="Find the exact span in files, connectors, logs, or raw text"
             className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-base text-white outline-none transition placeholder:text-[rgb(var(--muted))] focus:border-cyan-300/40 focus:bg-black/25"
           />
         </label>

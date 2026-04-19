@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from scipy import sparse
 
 from app.config import Settings
-from app.retrieval.bm25 import _STEMMER_AVAILABLE, BM25Index, BM25Tokenizer
+from app.retrieval.bm25 import _STEMMER_AVAILABLE, BM25Index, BM25ScoredChunk, BM25Tokenizer
 from app.retrieval.bm25_cache import BM25IndexCache
 from app.retrieval.chunker import chunk_document, chunk_documents, chunk_documents_iter
 from app.retrieval.pipeline import RetrievalPipeline
@@ -46,6 +46,20 @@ def test_chunker_preserves_overlap_and_metadata() -> None:
     assert chunks[1].text == "three four five six"
     assert chunks[1].location.row_number == 4
     assert chunks[1].metadata["row_index"] == 4
+
+
+def test_chunker_tracks_exact_offsets_and_preserves_source_whitespace() -> None:
+    content = "alpha   beta\ngamma delta"
+    document = ParsedDocument(content=content, source_name="notes.txt")
+
+    chunks = chunk_document(document, max_tokens=2, overlap=1)
+
+    assert chunks[0].text == "alpha   beta"
+    assert chunks[0].metadata["source_start"] == 0
+    assert chunks[0].metadata["source_end"] == len("alpha   beta")
+    assert chunks[1].text == "beta\ngamma"
+    assert chunks[1].metadata["source_start"] == content.index("beta")
+    assert chunks[1].metadata["source_end"] == content.index("gamma") + len("gamma")
 
 
 def test_chunk_documents_iter_yields_same_as_list() -> None:
@@ -397,6 +411,69 @@ def test_pipeline_search_returns_rich_results_with_fallback_reranker() -> None:
     assert results[0].metadata["parser_name"] == "csv"
 
 
+def test_pipeline_returns_primary_span_with_exact_source_offsets() -> None:
+    text = "Intro line.\nAcme filed a Billing Complaint after duplicate billing."
+    pipeline = RetrievalPipeline(reranker=HeuristicReranker())
+
+    results = pipeline.search(
+        "billing complaint",
+        [SearchDocument(file_name="notes.txt", content=text)],
+        top_k=1,
+    )
+
+    span = results[0].primary_span
+    assert span is not None
+    assert span["text"] == "Billing Complaint"
+    assert text[span["source_start"] : span["source_end"]] == "Billing Complaint"
+    assert span["highlights"][0]["text"] == "Billing Complaint"
+    assert results[0].matched_spans[0] == span
+
+
+def test_pipeline_primary_span_carries_csv_row_location() -> None:
+    pipeline = RetrievalPipeline(reranker=HeuristicReranker())
+
+    results = pipeline.search(
+        "billing complaint",
+        [
+            SearchDocument(
+                file_name="complaints.csv",
+                content=b"customer,issue\nAcme,billing complaint\nBeta,shipping delay\n",
+                media_type="text/csv",
+            )
+        ],
+        top_k=1,
+    )
+
+    span = results[0].primary_span
+    assert span is not None
+    assert span["text"] == "billing complaint"
+    assert span["location"]["row_number"] == 2
+    assert results[0].content[span["source_start"] : span["source_end"]] == "billing complaint"
+
+
+def test_pipeline_returns_context_span_when_candidate_has_no_exact_match() -> None:
+    class StaticRetriever:
+        def search(self, query, chunks, top_k, workspace_id, use_cache=True):  # noqa: ANN001
+            return [BM25ScoredChunk(chunk=list(chunks)[0], score=0.42)]
+
+    pipeline = RetrievalPipeline(
+        retriever=StaticRetriever(),
+        reranker=HeuristicReranker(),
+    )
+
+    results = pipeline.search(
+        "zebra",
+        [SearchDocument(file_name="notes.txt", content="alpha beta gamma")],
+        top_k=1,
+    )
+
+    span = results[0].primary_span
+    assert span is not None
+    assert span["text"] == "alpha beta gamma"
+    assert span["highlights"] == []
+    assert results[0].matched_spans == [span]
+
+
 def test_pipeline_uses_bm25_cache() -> None:
     cache = BM25IndexCache(ttl=60.0, max_entries=5)
     pipeline = RetrievalPipeline(reranker=HeuristicReranker(), bm25_cache=cache)
@@ -406,6 +483,17 @@ def test_pipeline_uses_bm25_cache() -> None:
     # Second search — should hit cache (no second build)
     with cache._lock:
         assert "test-ws" in cache._cache
+
+
+def test_pipeline_can_skip_bm25_cache_for_ephemeral_sources() -> None:
+    cache = BM25IndexCache(ttl=60.0, max_entries=5)
+    pipeline = RetrievalPipeline(reranker=HeuristicReranker(), bm25_cache=cache)
+    docs = [SearchDocument(file_name="raw.txt", content=b"billing refund complaint")]
+
+    pipeline.search("billing", docs, top_k=5, workspace_id="test-ws", use_cache=False)
+
+    with cache._lock:
+        assert cache._cache == {}
 
 
 # ---------------------------------------------------------------------------

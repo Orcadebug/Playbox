@@ -23,13 +23,13 @@ class AnswerGenerator:
             return None, None
 
         if not self.settings.openrouter_api_key:
-            return self._fallback_answer(query, results), None
+            return None, "Answer generation unavailable: OPENROUTER_API_KEY is not configured"
 
         try:
             return await self._openrouter_answer(query, results), None
         except Exception as exc:  # pragma: no cover - network/credential errors
             _log.error("Answer generation failed", exc_info=exc)
-            return self._fallback_answer(query, results), "Answer generation unavailable"
+            return None, "Answer generation unavailable"
 
     async def stream_generate(self, query: str, results: Sequence[dict]) -> AsyncIterator[str]:
         """Yield answer tokens as they stream in from the LLM.

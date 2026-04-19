@@ -11,7 +11,7 @@ _TOKEN_RE = re.compile(r"\S+")
 
 
 def tokenize_text(text: str) -> list[str]:
-    return _TOKEN_RE.findall(text)
+    return [match.group(0) for match in _TOKEN_RE.finditer(text)]
 
 
 def chunk_document(
@@ -19,8 +19,8 @@ def chunk_document(
     max_tokens: int = 500,
     overlap: int = 50,
 ) -> list[Chunk]:
-    tokens = tokenize_text(document.content)
-    if not tokens:
+    token_matches = list(_TOKEN_RE.finditer(document.content))
+    if not token_matches:
         return []
 
     if max_tokens <= 0:
@@ -33,12 +33,13 @@ def chunk_document(
         step = max_tokens - overlap
 
     chunks: list[Chunk] = []
-    avg_chars_per_token = len(document.content) / max(len(tokens), 1)
-    for start in range(0, len(tokens), step):
-        end = min(len(tokens), start + max_tokens)
+    for start in range(0, len(token_matches), step):
+        end = min(len(token_matches), start + max_tokens)
         if start >= end:
             break
-        chunk_tokens = tokens[start:end]
+        char_start = token_matches[start].start()
+        char_end = token_matches[end - 1].end()
+        chunk_text = document.content[char_start:char_end]
         page_number = document.location.page_number or 0
         row_number = document.location.row_number or 0
         chunk_id = f"{document.source_name}:{page_number}:{row_number}:{len(chunks)}"
@@ -48,21 +49,25 @@ def chunk_document(
                 "chunk_index": len(chunks),
                 "token_start": start,
                 "token_end": end,
-                "byte_start": int(start * avg_chars_per_token),
-                "byte_end": min(len(document.content), int(end * avg_chars_per_token)),
+                "source_start": char_start,
+                "source_end": char_end,
+                "char_start": char_start,
+                "char_end": char_end,
+                "byte_start": char_start,
+                "byte_end": char_end,
             }
         )
         chunks.append(
             Chunk(
                 chunk_id=chunk_id,
-                content=" ".join(chunk_tokens),
+                content=chunk_text,
                 source_name=document.source_name,
                 metadata=metadata,
                 location=replace(document.location),
-                token_count=len(chunk_tokens),
+                token_count=end - start,
             )
         )
-        if end == len(tokens):
+        if end == len(token_matches):
             break
     for index, chunk in enumerate(chunks):
         adjacent_ids: list[str] = []

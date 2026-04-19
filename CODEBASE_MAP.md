@@ -1,7 +1,11 @@
 # Waver Codebase Map
 
 ## Overview
-Full-stack MVP: instant search over messy data sources. Upload documents → parse → BM25 rank + rerank → optional LLM answers.
+Full-stack MVP: retrieval-first search over messy data sources. Search can combine saved
+workspace sources, inline raw sources, and transient connector payloads. The backend parses
+sources on demand, retrieves/reranks candidate text, and returns exact span payloads with
+source offsets. Upload remains available for saved-source management; LLM answers are
+explicitly opt-in.
 
 ---
 
@@ -22,19 +26,27 @@ backend/
 │   │       └── sources.py      # GET /sources, DELETE /sources/{id}
 │   │
 │   ├── services/
-│   │   ├── search.py           # Search logic (orchestrates retrieval + answers)
+│   │   ├── search.py           # Stored/raw/connector source loading + retrieval orchestration
 │   │   └── sources.py          # Source/document CRUD
 │   │
 │   ├── retrieval/
-│   │   ├── pipeline.py         # Orchestrates chunking → BM25 → reranking
-│   │   ├── chunker.py          # Text chunking with overlap
+│   │   ├── pipeline.py         # Parses, chunks, retrieves, reranks, builds span payloads
+│   │   ├── chunker.py          # Exact-offset text chunking with overlap
 │   │   ├── tokenizer.py        # Tokenization logic
 │   │   ├── bm25.py             # BM25 scoring wrapper
-│   │   ├── bm25_cache.py       # BM25 index caching
-│   │   └── reranker.py         # ONNX cross-encoder inference
+│   │   ├── bm25_cache.py       # Stored-only BM25 index caching
+│   │   ├── reranker.py         # ONNX cross-encoder inference
+│   │   ├── retriever.py        # Unified retriever entry point
+│   │   ├── trie.py             # Cortical trie index (prefix structure)
+│   │   ├── cortical.py         # Cortical Trie Search retriever
+│   │   ├── sparse_projection.py # Sparse vector projection
+│   │   ├── diffusion.py        # Score diffusion over adjacency graph
+│   │   ├── adjacency.py        # Chunk adjacency graph
+│   │   ├── gating.py           # Retrieval gating / routing
+│   │   └── query_patterns.py   # Query pattern detection
 │   │
 │   ├── answer/
-│   │   ├── generator.py        # LLM answer generation (OpenRouter/Anthropic)
+│   │   ├── generator.py        # Opt-in LLM answer generation (OpenRouter/Anthropic)
 │   │   ├── citations.py        # Maps answer spans → source documents
 │   │   └── prompts.py          # System prompts for LLM
 │   │
@@ -57,8 +69,8 @@ backend/
 │   │
 │   ├── models/
 │   │   ├── base.py             # SQLAlchemy base
-│   │   ├── source.py           # Source (uploaded file metadata)
-│   │   └── document.py         # Document (parsed chunks)
+│   │   ├── source.py           # Saved source metadata
+│   │   └── document.py         # Saved parsed document content
 │   │
 │   ├── schemas/
 │   │   ├── documents.py        # Document response schemas
@@ -68,7 +80,10 @@ backend/
 │       └── session.py          # Database session management
 │
 ├── tests/
-│   └── test_retrieval.py       # Retrieval pipeline tests
+│   ├── test_retrieval.py       # Retrieval pipeline/span/cache tests
+│   ├── test_search_service.py  # Raw source, connector, answer-mode tests
+│   ├── test_cortical.py        # Cortical retrieval tests
+│   └── test_parsers.py         # Parser tests
 │
 ├── scripts/
 │   └── download_models.py      # Download BM25/reranker models
@@ -81,21 +96,25 @@ backend/
 
 **Key Flow:**
 ```
+POST /search or /search/stream
+  ↓
+load saved sources + raw_sources + connector_configs
+  ↓
+parse and chunk with exact source offsets
+  ↓
+retrieve/rerank candidates
+  ↓
+return results with primary_span, matched_spans, source_origin, source_errors
+  ↓
+optional answer_mode="llm" calls AnswerGenerator
+
 POST /upload
   ↓
-parse file (detector → registry → parser)
+parse file or pasted text
   ↓
-chunk text (chunker + tokenizer)
+store Source + Document rows for future searches
   ↓
-store Source + Documents in DB
-
-POST /search/stream
-  ↓
-retrieve docs (BM25 rank + reranker)
-  ↓
-stream search results (SSE)
-  ↓
-(optional) generate answer (LLM + citations)
+invalidate stored-source BM25 cache
 ```
 
 ---
@@ -130,9 +149,10 @@ frontend/
 │   │   └── search/
 │   │       ├── SearchWorkspace.tsx    # Search page container
 │   │       ├── SearchBar.tsx          # Search input
+│   │       ├── SourceControls.tsx     # Saved/raw/webhook source controls
 │   │       ├── ResultList.tsx         # Results container
 │   │       ├── ResultCard.tsx         # Individual result item
-│   │       └── AnswerCard.tsx         # LLM answer display
+│   │       └── AnswerCard.tsx         # Optional LLM answer display
 │   │
 │   └── lib/
 │       └── api-client.ts       # Typed fetch wrapper (all backend calls)
@@ -146,23 +166,23 @@ frontend/
 
 **Key Flow:**
 ```
+/search
+  ↓
+SearchBar + SourceControls
+  ↓
+POST /search/stream with include_stored_sources, raw_sources, connector_configs
+  ↓
+ResultList displays exact spans, source origin, offsets, score
+  ↓
+Optional "Generate answer" reruns search with answer_mode="llm"
+
 /upload
   ↓
 FileDropzone or PasteBox input
   ↓
-POST /upload → backend parse
+POST /upload → backend parse/store
   ↓
-workspace documents displayed
-
-/search
-  ↓
-SearchBar input + workspace selection
-  ↓
-POST /search/stream (EventSource)
-  ↓
-ResultList streams results
-  ↓
-(optional) AnswerCard displays LLM answer
+workspace saved sources displayed
 ```
 
 ---
@@ -172,9 +192,12 @@ ResultList streams results
 | Concept | Location | Purpose |
 |---------|----------|---------|
 | **Workspace namespacing** | Request params | Isolate documents per workspace_id |
-| **Streaming (SSE)** | `/search/stream` endpoint + EventSource | Real-time result delivery |
+| **Raw source search** | `raw_sources` request field | Search transient request content without storing |
+| **Connector search** | `connector_configs` request field | Search transient connector results |
+| **Span payloads** | `primary_span`, `matched_spans` | Return exact snippets and source offsets |
+| **Streaming (SSE)** | `/search/stream` endpoint + fetch stream | Stream retrieval response payloads |
 | **CORS** | `app/main.py` | Cross-origin requests via `CORS_ORIGINS` |
-| **Database** | `app/models/` + `alembic/` | Postgres (Neon prod), SQLite dev |
+| **Database** | `app/models/` + `alembic/` | Saved sources only; raw/connector searches are transient |
 | **Type hints** | `app/schemas/` | Request/response validation |
 
 ---
@@ -185,8 +208,8 @@ ResultList streams results
 |--------|------|---------|
 | GET | `/healthz` | Health check |
 | POST | `/upload` | Upload file (FormData, workspace_id required) |
-| POST | `/search` | Search with optional LLM answer |
-| POST | `/search/stream` | Streaming search (SSE) |
+| POST | `/search` | Retrieval over saved/raw/connector sources |
+| POST | `/search/stream` | Streaming retrieval response (SSE) |
 | GET | `/sources` | List workspace sources |
 | DELETE | `/sources/{id}` | Delete source + documents |
 
@@ -202,6 +225,7 @@ OPENROUTER_API_KEY=...            # OpenRouter (LLM answers)
 ANTHROPIC_API_KEY=...             # Anthropic (LLM answers)
 NEXT_PUBLIC_API_BASE_URL=...      # Frontend → backend URL
 WAVER_RERANKER_MODEL=...          # Cross-encoder model name
+ENABLE_LIVE_CONNECTORS=true       # Enable external live connector fetches
 CORS_ORIGINS=...                  # Allowed origins
 ```
 
@@ -215,9 +239,11 @@ See `.env.example` for full list.
 - `fastapi` — web framework
 - `sqlalchemy` — ORM
 - `alembic` — migrations
-- `bm25s` — BM25 ranking
-- `transformers` — reranker inference
-- `pypdf`, `beautifulsoup4`, `pandas` — parsers
+- `PyStemmer` — optional stemming for BM25 tokenization
+- `onnxruntime` — cross-encoder reranker inference
+- `pyahocorasick` — query pattern scanning for exact spans/cortical retrieval
+- `numpy`, `scipy`, `scikit-learn` — retrieval math/projection helpers
+- `pymupdf`, `beautifulsoup4` — parsers
 
 **Frontend:**
 - `next` — framework

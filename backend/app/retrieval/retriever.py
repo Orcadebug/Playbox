@@ -16,6 +16,7 @@ class Retriever(Protocol):
         chunks: Sequence[Chunk],
         top_k: int,
         workspace_id: str,
+        use_cache: bool = True,
     ) -> list[BM25ScoredChunk]:
         raise NotImplementedError
 
@@ -32,12 +33,13 @@ class Bm25Retriever:
         chunks: Sequence[Chunk],
         top_k: int,
         workspace_id: str,
+        use_cache: bool = True,
     ) -> list[BM25ScoredChunk]:
         chunk_list = list(chunks)
         if not chunk_list:
             return []
 
-        if self.cache is not None:
+        if self.cache is not None and use_cache:
             index = self.cache.get_or_build(workspace_id, chunk_list)
         else:
             index = BM25Index(
