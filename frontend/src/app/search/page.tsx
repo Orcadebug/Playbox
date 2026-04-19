@@ -4,9 +4,9 @@ import { SearchWorkspace } from "@/components/search/SearchWorkspace";
 export default function SearchPage() {
   return (
     <AppShell
-      eyebrow="Search"
-      title="Query any messy corpus"
-      description="Type a question and get ranked passages plus a synthesized answer with citations."
+      eyebrow="Retrieval"
+      title="Find the exact span that matters"
+      description="Search saved workspace content, raw text, and transient connector payloads without making upload the required first step."
     >
       <SearchWorkspace
         initialQuery="Which customers complained about billing last week?"
@@ -15,4 +15,3 @@ export default function SearchPage() {
     </AppShell>
   );
 }
-

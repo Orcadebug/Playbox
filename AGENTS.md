@@ -10,6 +10,16 @@ This repo is a two-part MVP:
 
 Use `backend/` and `frontend/` for new work. The top-level `Waver/` directory is an empty scaffold and should not receive new code.
 
+## Product Architecture Notes
+Waver is retrieval-first:
+
+- Raw request sources and connector configs are first-class search inputs.
+- Upload/store is saved-source management, not a required search setup step.
+- Search results should center exact snippets/spans (`primary_span`, `matched_spans`) and source offsets.
+- Persistent chunk/index prep is optional; raw and connector searches should remain transient.
+- BM25 cache is an optimization for stored-only searches, not a product dependency.
+- LLM answers are opt-in via `answer_mode="llm"` and should never replace source retrieval results.
+
 ## Build, Test, and Development Commands
 - `make dev`: Start full Docker dev stack (Postgres, backend, frontend).
 - `make backend-dev`: Run FastAPI locally with reload via `uv`.
@@ -29,7 +39,7 @@ Use `backend/` and `frontend/` for new work. The top-level `Waver/` directory is
 ## Testing Guidelines
 - Framework: `pytest` + `pytest-asyncio` (backend only currently).
 - Location/pattern: `backend/tests/test_*.py`; keep test names descriptive (`test_<behavior>()`).
-- Add or update tests for parser, retrieval, and API behavior when touching backend logic.
+- Add or update tests for parser, retrieval, API, raw-source, connector, span, cache, and answer-mode behavior when touching backend logic.
 - For frontend changes, at minimum run `npm run lint` and `npm run typecheck` until UI tests are introduced.
 
 ## Commit & Pull Request Guidelines

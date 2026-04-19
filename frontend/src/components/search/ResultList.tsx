@@ -13,10 +13,10 @@ export function ResultList({
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.28em] text-[rgb(var(--muted))]">
-            Ranked sources
+            Ranked spans
           </p>
           <h2 className="font-display mt-2 text-2xl text-white">
-            Top passages
+            Exact matches
           </h2>
         </div>
         <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-[rgb(var(--muted))]">
@@ -36,7 +36,7 @@ export function ResultList({
           ))
         ) : (
           <div className="glass-card rounded-[26px] p-6 text-sm leading-7 text-[rgb(var(--muted))]">
-            No passages matched this query yet.
+            No spans matched this query yet.
           </div>
         )}
       </div>

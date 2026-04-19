@@ -7,12 +7,12 @@ const items = [
   {
     href: "/search",
     title: "Search",
-    body: "Ask questions across any uploaded corpus.",
+    body: "Retrieve exact spans from saved, raw, or connector sources.",
   },
   {
     href: "/upload",
     title: "Upload",
-    body: "Drop files, paste text, or connect a source.",
+    body: "Manage saved workspace sources.",
   },
   {
     href: "/demo",
@@ -34,7 +34,7 @@ export function Sidebar() {
           Query anything.
         </div>
         <p className="mt-2 text-sm leading-6 text-[rgb(var(--muted))]">
-          Waver keeps the flow simple: ingest, search, understand, cite.
+          Waver keeps the flow simple: retrieve, inspect, cite, then synthesize.
         </p>
       </div>
 

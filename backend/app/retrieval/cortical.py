@@ -68,6 +68,7 @@ class CorticalRetriever:
         chunks: Sequence[Chunk],
         top_k: int,
         workspace_id: str,
+        use_cache: bool = True,
     ) -> list[BM25ScoredChunk]:
         chunk_list = list(chunks)
         if not chunk_list:

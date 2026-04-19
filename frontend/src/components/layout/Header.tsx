@@ -22,7 +22,7 @@ export function Header({
             Waver
           </div>
           <div className="text-xs text-[rgb(var(--muted))]">
-            Search & understand messy data
+            Retrieval-first messy data search
           </div>
         </div>
       </Link>

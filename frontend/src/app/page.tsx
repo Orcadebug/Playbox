@@ -4,15 +4,15 @@ import { Header } from "@/components/layout/Header";
 const highlights = [
   {
     title: "No indexing ceremony",
-    body: "Paste text, upload files, or connect a source and search immediately.",
+    body: "Search raw text, connectors, or saved sources immediately.",
   },
   {
-    title: "JIT retrieval",
-    body: "BM25 pre-filtering plus neural reranking keeps results relevant without a build step.",
+    title: "Span-first retrieval",
+    body: "Ranked results point to the exact passage and character range that matched.",
   },
   {
-    title: "Answer with receipts",
-    body: "The synthesized answer stays tied to source passages and citations.",
+    title: "Answers stay optional",
+    body: "Generate synthesis only after the source spans are already visible.",
   },
 ];
 
@@ -34,12 +34,12 @@ export default function LandingPage() {
               Search & understand messy data
             </span>
             <h1 className="font-display mt-6 max-w-2xl text-5xl font-bold tracking-tight text-white md:text-7xl">
-              Waver turns scattered data into answers in one query.
+              Waver finds the exact span in scattered data.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-[rgb(var(--muted))]">
-              Upload CSVs, PDFs, logs, JSON, or pasted text. Waver parses on
-              demand, ranks the best passages, and synthesizes a cited answer
-              without a persistent indexing pipeline.
+              Search CSVs, PDFs, logs, JSON, pasted text, or connector payloads.
+              Waver parses on demand and ranks the source spans without a
+              persistent indexing pipeline.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
@@ -76,9 +76,9 @@ export default function LandingPage() {
             </p>
             <div className="mt-5 space-y-4">
               {[
-                "Drop in files or paste raw text",
-                "Search instantly with no indexing step",
-                "Read ranked source passages and the synthesized answer",
+                "Choose saved, raw, or connector sources",
+                "Search instantly with no required index step",
+                "Inspect ranked spans before optional synthesis",
               ].map((step, index) => (
                 <div
                   key={step}

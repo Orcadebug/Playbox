@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import select
@@ -14,8 +15,9 @@ from app.answer.citations import attach_citation_labels
 from app.config import Settings
 from app.models import Source
 from app.retrieval.bm25_cache import BM25IndexCache
-from app.retrieval.pipeline import RetrievalPipeline, SearchDocument
+from app.retrieval.pipeline import RetrievalPipeline
 from app.retrieval.retriever import Bm25Retriever, Retriever
+from app.schemas.search import SearchDocument
 
 _log = logging.getLogger(__name__)
 
@@ -25,6 +27,7 @@ _log = logging.getLogger(__name__)
 
 _bm25_cache: BM25IndexCache | None = None
 _pipeline: RetrievalPipeline | None = None
+_SECRET_MARKERS = ("token", "secret", "password", "key", "credential")
 
 
 def _build_retriever(settings: Settings, bm25_cache: BM25IndexCache) -> Retriever:
@@ -105,6 +108,50 @@ def invalidate_workspace_cache(workspace_id: str) -> None:
         _bm25_cache.invalidate(workspace_id)
 
 
+@dataclass(slots=True)
+class LoadedSources:
+    documents: list[SearchDocument]
+    errors: list[dict[str, str | None]]
+    cacheable: bool
+
+
+def _contains_secret_marker(key: str) -> bool:
+    lowered = key.lower()
+    return any(marker in lowered for marker in _SECRET_MARKERS)
+
+
+def _sanitize_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return _sanitize_metadata(value)
+    if isinstance(value, list):
+        return [_sanitize_value(item) for item in value]
+    return value
+
+
+def _sanitize_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    clean: dict[str, Any] = {}
+    for key, value in metadata.items():
+        if _contains_secret_marker(str(key)):
+            continue
+        clean[key] = _sanitize_value(value)
+    return clean
+
+
+def _source_error(
+    source_type: str,
+    message: str,
+    *,
+    connector_id: str | None = None,
+    source_name: str | None = None,
+) -> dict[str, str | None]:
+    return {
+        "source_type": source_type,
+        "connector_id": connector_id,
+        "source_name": source_name,
+        "message": message,
+    }
+
+
 # ---------------------------------------------------------------------------
 # SearchService
 # ---------------------------------------------------------------------------
@@ -120,21 +167,39 @@ class SearchService:
         top_k: int,
         source_ids: list[str] | None,
         workspace_id: str,
+        raw_sources: list[dict[str, Any]] | None = None,
         connector_configs: list[dict[str, Any]] | None = None,
+        include_stored_sources: bool = True,
+        answer_mode: str = "off",
     ) -> dict[str, Any]:
-        documents = await self._load_documents(
+        loaded = await self._load_documents(
             workspace_id=workspace_id,
             source_ids=source_ids,
+            raw_sources=raw_sources or [],
             connector_configs=connector_configs,
+            include_stored_sources=include_stored_sources,
         )
         raw_results = self.pipeline.search(
-            query=query, documents=documents, top_k=top_k, workspace_id=workspace_id
+            query=query,
+            documents=loaded.documents,
+            top_k=top_k,
+            workspace_id=workspace_id,
+            use_cache=loaded.cacheable,
         )
         results = attach_citation_labels([self._serialize_result(r) for r in raw_results])
+        answer = None
+        answer_error = None
+        if answer_mode == "llm":
+            from app.answer.generator import AnswerGenerator  # noqa: PLC0415
+
+            answer, answer_error = await AnswerGenerator().generate(query, results)
         return {
             "query": query,
+            "answer": answer,
+            "answer_error": answer_error,
             "results": results,
             "sources": self._unique_sources(results),
+            "source_errors": loaded.errors,
         }
 
     async def stream_search(
@@ -143,7 +208,10 @@ class SearchService:
         top_k: int,
         source_ids: list[str] | None,
         workspace_id: str,
+        raw_sources: list[dict[str, Any]] | None = None,
         connector_configs: list[dict[str, Any]] | None = None,
+        include_stored_sources: bool = True,
+        answer_mode: str = "off",
     ) -> AsyncIterator[str]:
         """Async generator yielding SSE-formatted data lines with search results."""
         result = await self.search(
@@ -151,7 +219,10 @@ class SearchService:
             top_k=top_k,
             source_ids=source_ids,
             workspace_id=workspace_id,
+            raw_sources=raw_sources,
             connector_configs=connector_configs,
+            include_stored_sources=include_stored_sources,
+            answer_mode=answer_mode,
         )
         yield f"data: {json.dumps(result)}\n\n"
 
@@ -161,11 +232,30 @@ class SearchService:
         self,
         workspace_id: str,
         source_ids: list[str] | None,
+        raw_sources: list[dict[str, Any]],
         connector_configs: list[dict[str, Any]] | None = None,
-    ) -> list[SearchDocument]:
-        db_docs = await self._load_db_documents(workspace_id, source_ids)
-        connector_docs = await self._fetch_connector_documents(connector_configs or [])
-        return db_docs + connector_docs
+        include_stored_sources: bool = True,
+    ) -> LoadedSources:
+        documents: list[SearchDocument] = []
+        errors: list[dict[str, str | None]] = []
+
+        if include_stored_sources:
+            documents.extend(await self._load_db_documents(workspace_id, source_ids))
+
+        raw_docs, raw_errors = self._load_raw_documents(raw_sources)
+        connector_docs, connector_errors = await self._fetch_connector_documents(
+            connector_configs or []
+        )
+        documents.extend(raw_docs)
+        documents.extend(connector_docs)
+        errors.extend(raw_errors)
+        errors.extend(connector_errors)
+
+        return LoadedSources(
+            documents=documents,
+            errors=errors,
+            cacheable=include_stored_sources and not raw_sources and not connector_configs,
+        )
 
     async def _load_db_documents(
         self, workspace_id: str, source_ids: list[str] | None
@@ -190,6 +280,7 @@ class SearchService:
                         "source_id": source.id,
                         "title": document.title or source.name,
                         "source_type": source.source_type,
+                        "source_origin": "stored",
                     }
                 )
                 search_docs.append(
@@ -202,37 +293,136 @@ class SearchService:
                 )
         return search_docs
 
+    def _load_raw_documents(
+        self,
+        raw_sources: list[dict[str, Any]],
+    ) -> tuple[list[SearchDocument], list[dict[str, str | None]]]:
+        documents: list[SearchDocument] = []
+        errors: list[dict[str, str | None]] = []
+        for index, raw_source in enumerate(raw_sources):
+            name = str(raw_source.get("name") or f"Raw source {index + 1}")
+            content = raw_source.get("content")
+            if not content:
+                errors.append(
+                    _source_error("raw", "Raw source has no content", source_name=name)
+                )
+                continue
+
+            source_id = str(raw_source.get("id") or f"raw:{index}:{name}")
+            source_type = str(raw_source.get("source_type") or "raw")
+            metadata = _sanitize_metadata(dict(raw_source.get("metadata") or {}))
+            metadata.update(
+                {
+                    "source_id": source_id,
+                    "source_type": source_type,
+                    "source_origin": "raw",
+                    "title": metadata.get("title", name),
+                }
+            )
+            documents.append(
+                SearchDocument(
+                    file_name=name,
+                    content=content if isinstance(content, (bytes, str)) else str(content),
+                    media_type=raw_source.get("media_type") or "text/plain",
+                    metadata=metadata,
+                )
+            )
+        return documents, errors
+
     async def _fetch_connector_documents(
         self, connector_configs: list[dict[str, Any]]
-    ) -> list[SearchDocument]:
+    ) -> tuple[list[SearchDocument], list[dict[str, str | None]]]:
         from app.config import get_settings  # noqa: PLC0415
         from app.connectors.registry import default_registry  # noqa: PLC0415
 
         settings = get_settings()
-        if not settings.enable_live_connectors or not connector_configs:
-            return []
+        if not connector_configs:
+            return [], []
 
-        async def _fetch_one(cfg: dict[str, Any]) -> list[SearchDocument]:
+        async def _fetch_one(
+            cfg: dict[str, Any],
+        ) -> tuple[list[SearchDocument], list[dict[str, str | None]]]:
             connector_id = cfg.get("connector_id", "")
             connector = default_registry.get(connector_id)
             if connector is None:
                 _log.warning("Unknown connector_id %r — skipping", connector_id)
-                return []
+                return [], [
+                    _source_error(
+                        "connector",
+                        "Unknown connector",
+                        connector_id=str(connector_id) if connector_id else None,
+                    )
+                ]
+            if connector_id != "webhook" and not settings.enable_live_connectors:
+                _log.warning("Connector %r disabled — skipping", connector_id)
+                return [], [
+                    _source_error(
+                        "connector",
+                        "Live connector is disabled",
+                        connector_id=str(connector_id),
+                    )
+                ]
             try:
                 cfg_with_limit = {**cfg, "max_documents": settings.connector_max_documents}
-                return await asyncio.wait_for(
+                docs = await asyncio.wait_for(
                     connector.fetch_as_search_documents(cfg_with_limit),
                     timeout=settings.connector_fetch_timeout,
                 )
+                return self._mark_connector_documents(docs, str(connector_id)), []
             except asyncio.TimeoutError:
                 _log.warning("Connector %r timed out — skipping", connector_id)
-                return []
+                return [], [
+                    _source_error(
+                        "connector",
+                        "Connector timed out",
+                        connector_id=str(connector_id),
+                    )
+                ]
             except Exception as exc:
                 _log.warning("Connector %r failed: %s — skipping", connector_id, exc)
-                return []
+                return [], [
+                    _source_error(
+                        "connector",
+                        "Connector failed",
+                        connector_id=str(connector_id),
+                    )
+                ]
 
         results = await asyncio.gather(*(_fetch_one(cfg) for cfg in connector_configs))
-        return [doc for batch in results for doc in batch]
+        documents: list[SearchDocument] = []
+        errors: list[dict[str, str | None]] = []
+        for doc_batch, error_batch in results:
+            documents.extend(doc_batch)
+            errors.extend(error_batch)
+        return documents, errors
+
+    def _mark_connector_documents(
+        self, documents: list[SearchDocument], connector_id: str
+    ) -> list[SearchDocument]:
+        marked: list[SearchDocument] = []
+        for index, document in enumerate(documents):
+            metadata = _sanitize_metadata(dict(document.metadata))
+            metadata.update(
+                {
+                    "source_id": metadata.get(
+                        "source_id",
+                        f"connector:{connector_id}:{index}:{document.file_name}",
+                    ),
+                    "source_type": metadata.get("source_type", connector_id),
+                    "source_origin": "connector",
+                    "connector_id": connector_id,
+                    "title": metadata.get("title", document.file_name),
+                }
+            )
+            marked.append(
+                SearchDocument(
+                    file_name=document.file_name,
+                    content=document.content,
+                    media_type=document.media_type,
+                    metadata=metadata,
+                )
+            )
+        return marked
 
     def _serialize_result(self, result: Any) -> dict[str, Any]:
         metadata = dict(result.metadata or {})
@@ -250,6 +440,9 @@ class SearchService:
             "bm25_score": result.bm25_score,
             "rerank_score": result.rerank_score,
             "spans": result.spans,
+            "primary_span": result.primary_span,
+            "matched_spans": result.matched_spans,
+            "source_origin": metadata.get("source_origin", "stored"),
         }
 
     def _unique_sources(self, results: list[dict[str, Any]]) -> list[dict[str, str]]:

@@ -15,8 +15,10 @@ from app.parsers.plaintext import PlainTextParser
 from app.retrieval.bm25 import BM25ScoredChunk
 from app.retrieval.bm25_cache import BM25IndexCache
 from app.retrieval.chunker import chunk_documents, chunk_documents_iter
+from app.retrieval.query_patterns import build_query_patterns
 from app.retrieval.reranker import AutoReranker, Reranker
 from app.retrieval.retriever import Bm25Retriever, Retriever
+from app.retrieval.trie import QueryTrie
 from app.schemas.search import SearchDocument, SearchResult
 
 _log = logging.getLogger(__name__)
@@ -43,6 +45,100 @@ def _metadata_spans(metadata: dict[str, object]) -> list[tuple[int, int]] | None
         ):
             spans.append((item[0], item[1]))
     return spans or None
+
+
+def _safe_int(value: object, default: int = 0) -> int:
+    try:
+        return int(value) if value is not None else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _location_dict(location: object) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key in ("page_number", "row_number", "line_number", "section"):
+        value = getattr(location, key, None)
+        if value is not None:
+            result[key] = value
+    return result
+
+
+def _query_spans(query: str, text: str, chunk_id: str) -> list[tuple[int, int]]:
+    patterns = build_query_patterns(query)
+    if not patterns:
+        return []
+    from app.schemas.documents import Chunk, SourceLocation  # noqa: PLC0415
+
+    chunk = Chunk(
+        chunk_id=chunk_id,
+        content=text,
+        source_name="span-candidate",
+        location=SourceLocation(),
+    )
+    return QueryTrie(patterns).spans_for_chunk(chunk)
+
+
+def _span_window(text: str, start: int, end: int, limit: int = 280) -> tuple[int, int]:
+    if len(text) <= limit:
+        return 0, len(text)
+    center = max(start, min(end, (start + end) // 2))
+    window_start = max(0, center - limit // 2)
+    window_end = min(len(text), window_start + limit)
+    if window_end - window_start < limit:
+        window_start = max(0, window_end - limit)
+    return window_start, window_end
+
+
+def _build_span_payload(
+    text: str,
+    start: int,
+    end: int,
+    source_base: int,
+    location: dict[str, object],
+) -> dict[str, object]:
+    snippet_start, snippet_end = _span_window(text, start, end)
+    snippet = text[snippet_start:snippet_end]
+    highlight_start = start - snippet_start
+    highlight_end = end - snippet_start
+    source_start = source_base + start
+    source_end = source_base + end
+    return {
+        "text": text[start:end],
+        "snippet": snippet,
+        "source_start": source_start,
+        "source_end": source_end,
+        "snippet_start": source_base + snippet_start,
+        "snippet_end": source_base + snippet_end,
+        "highlights": [
+            {
+                "start": highlight_start,
+                "end": highlight_end,
+                "source_start": source_start,
+                "source_end": source_end,
+                "text": text[start:end],
+            }
+        ],
+        "location": location,
+    }
+
+
+def _build_context_span(
+    text: str,
+    source_base: int,
+    location: dict[str, object],
+    limit: int = 280,
+) -> dict[str, object]:
+    snippet = text[:limit]
+    return {
+        "text": snippet,
+        "snippet": snippet,
+        "source_start": source_base,
+        "source_end": source_base + len(snippet),
+        "snippet_start": source_base,
+        "snippet_end": source_base + len(snippet),
+        "highlights": [],
+        "location": location,
+    }
 
 
 def _make_default_reranker() -> AutoReranker:
@@ -87,6 +183,7 @@ class RetrievalPipeline:
         documents: Sequence[SearchDocument],
         top_k: int = 10,
         workspace_id: str = "default",
+        use_cache: bool = True,
     ) -> list[SearchResult]:
         parsed_documents = self._parse_documents(documents)
 
@@ -108,9 +205,10 @@ class RetrievalPipeline:
             chunks,
             top_k=self.bm25_candidates,
             workspace_id=workspace_id,
+            use_cache=use_cache,
         )
         reranked = self.reranker.rerank(query, first_stage_hits, top_k=top_k)
-        results = [self._to_search_result(hit) for hit in reranked[:top_k]]
+        results = [self._to_search_result(hit, query) for hit in reranked[:top_k]]
 
         # Early exit: if top result has very high confidence and a wide gap to #2,
         # return immediately rather than continuing any downstream processing.
@@ -159,11 +257,27 @@ class RetrievalPipeline:
             )
         return merged
 
-    def _to_search_result(self, hit: BM25ScoredChunk) -> SearchResult:
+    def _to_search_result(self, hit: BM25ScoredChunk, query: str) -> SearchResult:
         metadata = dict(hit.chunk.metadata)
+        source_base = _safe_int(
+            metadata.get(
+                "source_start",
+                metadata.get("char_start", metadata.get("byte_start", 0)),
+            )
+        )
+        spans = _metadata_spans(metadata) or _query_spans(query, hit.chunk.text, hit.chunk.chunk_id)
+        location = _location_dict(hit.chunk.location)
+        matched_spans = [
+            _build_span_payload(hit.chunk.text, start, end, source_base, location)
+            for start, end in spans
+            if 0 <= start < end <= len(hit.chunk.text)
+        ]
+        if not matched_spans:
+            matched_spans = [_build_context_span(hit.chunk.text, source_base, location)]
+        primary_span = matched_spans[0]
         return SearchResult(
             content=hit.chunk.text,
-            snippet=_snippet(hit.chunk.text),
+            snippet=str(primary_span["snippet"]),
             score=hit.rerank_score if hit.rerank_score is not None else hit.score,
             source_name=hit.chunk.source_name,
             metadata=metadata,
@@ -175,5 +289,7 @@ class RetrievalPipeline:
             ),
             bm25_score=hit.bm25_score if hit.bm25_score is not None else hit.score,
             rerank_score=hit.rerank_score if hit.rerank_score is not None else hit.score,
-            spans=_metadata_spans(metadata),
+            spans=spans or None,
+            primary_span=primary_span,
+            matched_spans=matched_spans,
         )

@@ -1,35 +1,97 @@
 # Waver
 
-Waver is a web app and API for instant search over messy data sources such as PDFs, CSVs,
-JSON, logs, HTML, markdown, and pasted text. It parses uploaded content into documents,
-runs just-in-time retrieval, and returns ranked passages with citation labels.
+Waver is a retrieval-first web app and API for finding the exact span that matters in
+messy sources such as PDFs, CSVs, JSON, logs, HTML, markdown, pasted text, and connector
+payloads. Uploading saved workspace sources is supported, but raw request sources and
+connectors are first-class search inputs too.
+
+The core product is retrieval: parse sources on demand, rank candidate text, return exact
+snippets/spans with source offsets, and cite where each match came from. LLM-generated
+answers are optional frosting and run only when explicitly requested.
 
 ## Quick start
 
 1. Copy `.env.example` to `.env`.
    API keys (`OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY`) are optional for the current
    retrieval-first flow.
-2. Run `make dev` for Docker-based development or `make install` followed by `make backend-dev` and `make frontend-dev` in separate terminals.
+2. Run `make dev` for Docker-based development or `make install` followed by
+   `make backend-dev` and `make frontend-dev` in separate terminals.
 3. Open `http://localhost:3000` for the UI and `http://localhost:8000/docs` for the API docs.
 
 ## Current scope
 
 This repository contains a runnable MVP for:
 
-- Uploading files or pasted text
+- Searching saved workspace sources, inline raw sources, and transient connector payloads
+- Uploading files or pasted text when content should be saved for later searches
 - Parsing common document formats
-- Running ephemeral retrieval (BM25 + reranking) over stored parsed documents
-- Returning ranked results with snippets, source metadata, and citation labels
-- A Next.js frontend for upload, search, and demo flows (with backend-offline fallback)
-- Connector scaffolding (Webhook/Slack) with live fetching disabled by default
+- Running just-in-time retrieval with BM25/cortical retrievers and reranking
+- Returning ranked results with `primary_span`, `matched_spans`, source offsets, metadata,
+  and citation labels
+- Skipping persistent chunk/index prep for raw and connector searches
+- Using BM25 cache only as an optimization for stored-only searches
+- A Next.js frontend for retrieval, saved-source management, and demo flows
+- Webhook connector payload search, plus Slack scaffolding gated by live connector config
 
 ## Current status
 
 - Active search endpoints:
   - `POST /api/v1/search`
   - `POST /api/v1/search/stream`
+- Search accepts:
+  - `raw_sources`
+  - `connector_configs`
+  - `include_stored_sources`
+  - `answer_mode`
 - Current search response shape is retrieval-first:
   - `query`
+  - `answer`
+  - `answer_error`
   - `results`
   - `sources`
-- LLM answer-generation code exists under `backend/app/answer`, but it is not currently wired into the active search response path.
+  - `source_errors`
+- Result objects include compatibility fields plus span-first fields:
+  - `primary_span`
+  - `matched_spans`
+  - `source_origin`
+- LLM answer generation exists under `backend/app/answer` and is only called when
+  `answer_mode` is `"llm"`.
+
+## Search request example
+
+```json
+{
+  "query": "billing refund",
+  "top_k": 8,
+  "include_stored_sources": true,
+  "answer_mode": "off",
+  "raw_sources": [
+    {
+      "id": "scratchpad",
+      "name": "Raw scratchpad",
+      "content": "Acme asked for a billing refund after a duplicate charge.",
+      "media_type": "text/plain",
+      "source_type": "raw"
+    }
+  ],
+  "connector_configs": [
+    {
+      "connector_id": "webhook",
+      "documents": [
+        {
+          "name": "ticket-7.txt",
+          "content": "Acme opened an invoice dispute yesterday.",
+          "media_type": "text/plain"
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Verification notes
+
+- `make test` should pass the backend test suite.
+- `cd frontend && npm run lint`, `npm run typecheck`, and `npm run build` should pass.
+- `make lint` currently runs repo-wide Ruff and may fail on pre-existing lint debt in
+  untouched backend files.
