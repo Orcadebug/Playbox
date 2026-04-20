@@ -3,9 +3,12 @@
 ## Overview
 Full-stack MVP: retrieval-first search over messy data sources. Search can combine saved
 workspace sources, inline raw sources, and transient connector payloads. The backend parses
-sources on demand, retrieves/reranks candidate text, and returns exact span payloads with
-source offsets. Upload remains available for saved-source management; LLM answers are
-explicitly opt-in.
+sources on demand, executes query-time span retrieval/reranking, and returns exact span
+payloads with source offsets. Upload remains available for saved-source management; LLM
+answers are explicitly opt-in.
+
+Frontend note: the UI is an API-key onboarding and smoke-test surface only. The primary
+integration surface is the backend API.
 
 ---
 
@@ -31,6 +34,10 @@ backend/
 │   │
 │   ├── retrieval/
 │   │   ├── pipeline.py         # Parses, chunks, retrieves, reranks, builds span payloads
+│   │   ├── source_executor.py  # SourceRecord/SourceWindow creation from parsed docs
+│   │   ├── planner.py          # Query-time budget + channel planning
+│   │   ├── channels.py         # Exact/proxy/structure channel scoring
+│   │   ├── span_executor.py    # Query-time span execution and phase outputs
 │   │   ├── chunker.py          # Exact-offset text chunking with overlap
 │   │   ├── tokenizer.py        # Tokenization logic
 │   │   ├── bm25.py             # BM25 scoring wrapper
@@ -100,11 +107,15 @@ POST /search or /search/stream
   ↓
 load saved sources + raw_sources + connector_configs
   ↓
-parse and chunk with exact source offsets
+parse + source/window execution with exact source offsets
   ↓
-retrieve/rerank candidates
+planner selects query budget/channels
   ↓
-return results with primary_span, matched_spans, source_origin, source_errors
+exact/proxy/structure first pass over windows
+  ↓
+rerank shortlist
+  ↓
+return phased SSE events + final retrieval payload
   ↓
 optional answer_mode="llm" calls AnswerGenerator
 
@@ -130,7 +141,7 @@ frontend/
 │   │   ├── upload/
 │   │   │   └── page.tsx        # /upload page
 │   │   ├── search/
-│   │   │   └── page.tsx        # /search page
+│   │   │   └── page.tsx        # /search page (smoke harness)
 │   │   └── demo/
 │   │       └── page.tsx        # /demo page
 │   │
@@ -147,7 +158,7 @@ frontend/
 │   │   │   └── ConnectorPicker.tsx    # Slack/Webhook selector
 │   │   │
 │   │   └── search/
-│   │       ├── SearchWorkspace.tsx    # Search page container
+│   │       ├── SearchWorkspace.tsx    # Stream phase viewer + smoke harness
 │   │       ├── SearchBar.tsx          # Search input
 │   │       ├── SourceControls.tsx     # Saved/raw/webhook source controls
 │   │       ├── ResultList.tsx         # Results container
@@ -164,7 +175,7 @@ frontend/
 └── package.json                # npm dependencies
 ```
 
-**Key Flow:**
+**Key Flow (UI as onboarding/smoke surface):**
 ```
 /search
   ↓
@@ -172,7 +183,7 @@ SearchBar + SourceControls
   ↓
 POST /search/stream with include_stored_sources, raw_sources, connector_configs
   ↓
-ResultList displays exact spans, source origin, offsets, score
+SearchWorkspace consumes typed stream events and progressively updates state
   ↓
 Optional "Generate answer" reruns search with answer_mode="llm"
 
@@ -195,7 +206,7 @@ workspace saved sources displayed
 | **Raw source search** | `raw_sources` request field | Search transient request content without storing |
 | **Connector search** | `connector_configs` request field | Search transient connector results |
 | **Span payloads** | `primary_span`, `matched_spans` | Return exact snippets and source offsets |
-| **Streaming (SSE)** | `/search/stream` endpoint + fetch stream | Stream retrieval response payloads |
+| **Streaming (SSE)** | `/search/stream` endpoint + fetch stream | Stream typed retrieval phases + final response |
 | **CORS** | `app/main.py` | Cross-origin requests via `CORS_ORIGINS` |
 | **Database** | `app/models/` + `alembic/` | Saved sources only; raw/connector searches are transient |
 | **Type hints** | `app/schemas/` | Request/response validation |
@@ -209,7 +220,7 @@ workspace saved sources displayed
 | GET | `/healthz` | Health check |
 | POST | `/upload` | Upload file (FormData, workspace_id required) |
 | POST | `/search` | Retrieval over saved/raw/connector sources |
-| POST | `/search/stream` | Streaming retrieval response (SSE) |
+| POST | `/search/stream` | Progressive typed SSE retrieval stream |
 | GET | `/sources` | List workspace sources |
 | DELETE | `/sources/{id}` | Delete source + documents |
 

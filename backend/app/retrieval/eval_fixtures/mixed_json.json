@@ -1,0 +1,28 @@
+{
+  "pack_id": "mixed_json",
+  "cases": [
+    {
+      "id": "mixed_json_exact_ticket_record",
+      "profiles": ["smoke", "regression", "latency"],
+      "query": "ticket T-991 billing hold",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "json-batch-1",
+          "source_name": "tickets.json",
+          "source_origin": "raw",
+          "source_type": "json_records",
+          "media_type": "application/json",
+          "content": "[{\"ticket\":\"T-991\",\"state\":\"open\",\"reason\":\"billing hold\"},{\"ticket\":\"T-222\",\"state\":\"closed\",\"reason\":\"shipping delay\"}]"
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "json-batch-1",
+          "must_include_text": "T-991",
+          "match_type": "exact"
+        }
+      ]
+    }
+  ]
+}

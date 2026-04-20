@@ -17,6 +17,13 @@ from app.models import Source
 from app.retrieval.bm25_cache import BM25IndexCache
 from app.retrieval.pipeline import RetrievalPipeline
 from app.retrieval.retriever import Bm25Retriever, Retriever
+from app.retrieval.span_executor import SpanExecutor
+from app.retrieval.sparse_projection import (
+    DeterministicSemanticProjection,
+    ProjectionConfig,
+    SparseProjection,
+    load_projection,
+)
 from app.schemas.search import SearchDocument
 
 _log = logging.getLogger(__name__)
@@ -27,6 +34,7 @@ _log = logging.getLogger(__name__)
 
 _bm25_cache: BM25IndexCache | None = None
 _pipeline: RetrievalPipeline | None = None
+_projection: SparseProjection | DeterministicSemanticProjection | None = None
 _SECRET_MARKERS = ("token", "secret", "password", "key", "credential")
 
 
@@ -102,6 +110,28 @@ def _get_pipeline() -> RetrievalPipeline:
     return _pipeline
 
 
+def _get_projection() -> SparseProjection | DeterministicSemanticProjection:
+    global _projection
+    if _projection is None:
+        from app.config import get_settings  # noqa: PLC0415
+
+        settings = get_settings()
+        config = ProjectionConfig(
+            hash_features=settings.projection_hash_features,
+            dim=settings.projection_dim,
+        )
+        _projection = load_projection(settings.projection_model_path, config)
+    return _projection
+
+
+def _build_span_executor(pipeline: RetrievalPipeline) -> SpanExecutor:
+    return SpanExecutor(
+        parser_detector=pipeline.parser_detector,
+        reranker=pipeline.reranker,
+        projection=_get_projection(),
+    )
+
+
 def invalidate_workspace_cache(workspace_id: str) -> None:
     """Call after source upload/delete to clear the BM25 index for this workspace."""
     if _bm25_cache is not None:
@@ -152,9 +182,33 @@ def _source_error(
     }
 
 
+def _is_empty_raw_content(content: Any) -> bool:
+    if content is None:
+        return True
+    if isinstance(content, str):
+        return not content.strip()
+    if isinstance(content, bytes):
+        return not content.strip()
+    return False
+
+
+def _normalize_raw_content(content: Any, media_type: str | None) -> tuple[bytes | str, str]:
+    if isinstance(content, bytes):
+        return content, media_type or "application/octet-stream"
+    if isinstance(content, str):
+        return content, media_type or "text/plain"
+    if isinstance(content, (dict, list)):
+        return (
+            json.dumps(content, ensure_ascii=False, separators=(",", ":")),
+            media_type or "application/json",
+        )
+    return str(content), media_type or "text/plain"
+
+
 # ---------------------------------------------------------------------------
 # SearchService
 # ---------------------------------------------------------------------------
+
 
 class SearchService:
     def __init__(self, session: AsyncSession) -> None:
@@ -179,14 +233,14 @@ class SearchService:
             connector_configs=connector_configs,
             include_stored_sources=include_stored_sources,
         )
-        raw_results = self.pipeline.search(
+        executor = _build_span_executor(self.pipeline)
+        outcome = executor.execute(
             query=query,
             documents=loaded.documents,
             top_k=top_k,
-            workspace_id=workspace_id,
-            use_cache=loaded.cacheable,
+            cacheable=loaded.cacheable,
         )
-        results = attach_citation_labels([self._serialize_result(r) for r in raw_results])
+        results = attach_citation_labels([self._serialize_result(r) for r in outcome.final_results])
         answer = None
         answer_error = None
         if answer_mode == "llm":
@@ -200,6 +254,7 @@ class SearchService:
             "results": results,
             "sources": self._unique_sources(results),
             "source_errors": loaded.errors,
+            "execution": outcome.execution,
         }
 
     async def stream_search(
@@ -214,17 +269,95 @@ class SearchService:
         answer_mode: str = "off",
     ) -> AsyncIterator[str]:
         """Async generator yielding SSE-formatted data lines with search results."""
-        result = await self.search(
-            query=query,
-            top_k=top_k,
-            source_ids=source_ids,
+        loaded = await self._load_documents(
             workspace_id=workspace_id,
-            raw_sources=raw_sources,
+            source_ids=source_ids,
+            raw_sources=raw_sources or [],
             connector_configs=connector_configs,
             include_stored_sources=include_stored_sources,
-            answer_mode=answer_mode,
         )
-        yield f"data: {json.dumps(result)}\n\n"
+        executor = _build_span_executor(self.pipeline)
+        try:
+            outcome = executor.execute(
+                query=query,
+                documents=loaded.documents,
+                top_k=top_k,
+                cacheable=loaded.cacheable,
+            )
+            sources_loaded_payload = {
+                "event": "sources_loaded",
+                "query": query,
+                "source_errors": loaded.errors,
+                "execution": outcome.execution,
+            }
+            yield f"data: {json.dumps(sources_loaded_payload)}\n\n"
+
+            def _phase_payload(event: str, results_list: list[Any]) -> str:
+                serialized = attach_citation_labels(
+                    [self._serialize_result(item) for item in results_list]
+                )
+                payload = {
+                    "event": event,
+                    "query": query,
+                    "results": serialized,
+                    "source_errors": loaded.errors,
+                    "execution": outcome.execution,
+                }
+                return f"data: {json.dumps(payload)}\n\n"
+
+            if outcome.exact_results:
+                yield _phase_payload("exact_results", outcome.exact_results)
+            if outcome.proxy_results:
+                yield _phase_payload("proxy_results", outcome.proxy_results)
+            if outcome.reranked_results:
+                yield _phase_payload("reranked_results", outcome.reranked_results)
+
+            final_results = attach_citation_labels(
+                [self._serialize_result(item) for item in outcome.final_results]
+            )
+            answer = None
+            answer_error = None
+            if answer_mode == "llm":
+                from app.answer.generator import AnswerGenerator  # noqa: PLC0415
+
+                generator = AnswerGenerator()
+                streamed_answer = ""
+                try:
+                    async for token in generator.stream_generate(query, final_results):
+                        streamed_answer += token
+                        answer_delta_payload = {
+                            "event": "answer_delta",
+                            "query": query,
+                            "delta": token,
+                        }
+                        yield f"data: {json.dumps(answer_delta_payload)}\n\n"
+                except Exception as exc:  # pragma: no cover - network errors
+                    _log.warning("Answer streaming failed: %s", exc)
+                if streamed_answer.strip():
+                    confidence = "low" if not generator.settings.openrouter_api_key else "medium"
+                    answer = {"markdown": streamed_answer.strip(), "confidence": confidence}
+                else:
+                    answer, answer_error = await generator.generate(query, final_results)
+
+            done_payload = {
+                "event": "done",
+                "query": query,
+                "answer": answer,
+                "answer_error": answer_error,
+                "results": final_results,
+                "sources": self._unique_sources(final_results),
+                "source_errors": loaded.errors,
+                "execution": outcome.execution,
+            }
+            yield f"data: {json.dumps(done_payload)}\n\n"
+        except Exception as exc:  # pragma: no cover - defensive SSE envelope
+            _log.exception("Stream search failed")
+            payload = {
+                "event": "error",
+                "query": query,
+                "message": str(exc),
+            }
+            yield f"data: {json.dumps(payload)}\n\n"
 
     # --- internals -----------------------------------------------------------
 
@@ -302,10 +435,8 @@ class SearchService:
         for index, raw_source in enumerate(raw_sources):
             name = str(raw_source.get("name") or f"Raw source {index + 1}")
             content = raw_source.get("content")
-            if not content:
-                errors.append(
-                    _source_error("raw", "Raw source has no content", source_name=name)
-                )
+            if _is_empty_raw_content(content):
+                errors.append(_source_error("raw", "Raw source has no content", source_name=name))
                 continue
 
             source_id = str(raw_source.get("id") or f"raw:{index}:{name}")
@@ -319,11 +450,15 @@ class SearchService:
                     "title": metadata.get("title", name),
                 }
             )
+            normalized_content, media_type = _normalize_raw_content(
+                content,
+                raw_source.get("media_type"),
+            )
             documents.append(
                 SearchDocument(
                     file_name=name,
-                    content=content if isinstance(content, (bytes, str)) else str(content),
-                    media_type=raw_source.get("media_type") or "text/plain",
+                    content=normalized_content,
+                    media_type=media_type,
                     metadata=metadata,
                 )
             )
@@ -442,6 +577,8 @@ class SearchService:
             "spans": result.spans,
             "primary_span": result.primary_span,
             "matched_spans": result.matched_spans,
+            "channels": result.channels,
+            "channel_scores": result.channel_scores,
             "source_origin": metadata.get("source_origin", "stored"),
         }
 

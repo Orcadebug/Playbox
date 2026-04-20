@@ -6,8 +6,10 @@ import {
   checkHealthz,
   streamSearch,
   type ConnectorSearchConfig,
+  type JsonValue,
   type RawSearchSource,
   type SearchResponse,
+  type SearchStreamEvent,
 } from "@/lib/api-client";
 import { AnswerCard } from "./AnswerCard";
 import { ResultList } from "./ResultList";
@@ -19,6 +21,21 @@ const exampleQueries = [
   "Find mentions of a launch blocker in Slack.",
   "Show the row where churn risk was marked high.",
 ];
+
+function parseMaybeJson(value: string): { content: JsonValue; mediaType: string } {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { content: value, mediaType: "text/plain" };
+  }
+  if (!["{", "["].includes(trimmed[0])) {
+    return { content: value, mediaType: "text/plain" };
+  }
+  try {
+    return { content: JSON.parse(trimmed) as JsonValue, mediaType: "application/json" };
+  } catch {
+    return { content: value, mediaType: "text/plain" };
+  }
+}
 
 export function SearchWorkspace({
   initialQuery = "",
@@ -38,6 +55,17 @@ export function SearchWorkspace({
   const [webhookEnabled, setWebhookEnabled] = useState(false);
   const [webhookContent, setWebhookContent] = useState("");
   const [answerLoading, setAnswerLoading] = useState(false);
+  const [streamPhase, setStreamPhase] = useState<
+    | "idle"
+    | "loading"
+    | "sources_loaded"
+    | "exact_results"
+    | "proxy_results"
+    | "reranked_results"
+    | "answer_delta"
+    | "done"
+    | "error"
+  >("idle");
 
   useEffect(() => {
     void checkHealth();
@@ -56,13 +84,15 @@ export function SearchWorkspace({
     rawSources: RawSearchSource[];
     connectorConfigs: ConnectorSearchConfig[];
   } {
+    const rawContent = parseMaybeJson(rawSourceContent);
+    const connectorContent = parseMaybeJson(webhookContent);
     const rawSources: RawSearchSource[] = rawSourceContent.trim()
       ? [
           {
             id: "inline-raw-source",
             name: rawSourceName.trim() || "Raw scratchpad",
-            content: rawSourceContent,
-            media_type: "text/plain",
+            content: rawContent.content,
+            media_type: rawContent.mediaType,
             source_type: "raw",
           },
         ]
@@ -76,8 +106,8 @@ export function SearchWorkspace({
               documents: [
                 {
                   name: "webhook-inline.txt",
-                  content: webhookContent,
-                  media_type: "text/plain",
+                  content: connectorContent.content,
+                  media_type: connectorContent.mediaType,
                 },
               ],
             },
@@ -95,18 +125,63 @@ export function SearchWorkspace({
 
     setLoading(true);
     setAnswerLoading(answerMode === "llm");
+    setStreamPhase("loading");
     setSelectedCitation(null);
     const { rawSources, connectorConfigs } = buildSourcePayload();
 
     try {
-      const result = await streamSearch({
-        query: finalQuery,
-        answerMode,
-        includeStoredSources,
-        rawSources,
-        connectorConfigs,
-        mode: variant,
-      });
+      const result = await streamSearch(
+        {
+          query: finalQuery,
+          answerMode,
+          includeStoredSources,
+          rawSources,
+          connectorConfigs,
+          mode: variant,
+        },
+        (event: SearchStreamEvent) => {
+          if (event.type === "sources_loaded") {
+            setStreamPhase("sources_loaded");
+            return;
+          }
+          if (
+            event.type === "exact_results" ||
+            event.type === "proxy_results" ||
+            event.type === "reranked_results"
+          ) {
+            setStreamPhase(event.type);
+            setResponse(event.response);
+            return;
+          }
+          if (event.type === "answer_delta") {
+            setStreamPhase("answer_delta");
+            setAnswerLoading(true);
+            setResponse((current) => {
+              if (!current) {
+                return current;
+              }
+              const nextSummary = `${current.answer?.summary ?? ""}${event.delta}`;
+              return {
+                ...current,
+                answer: {
+                  summary: nextSummary,
+                  citations: current.answer?.citations ?? [],
+                  confidence: current.answer?.confidence ?? "low",
+                },
+              };
+            });
+            return;
+          }
+          if (event.type === "done") {
+            setStreamPhase("done");
+            setResponse(event.response);
+            return;
+          }
+          if (event.type === "error") {
+            setStreamPhase("error");
+          }
+        },
+      );
 
       setResponse(result);
       setQuery(finalQuery);
@@ -131,6 +206,17 @@ export function SearchWorkspace({
   const answerNotice = response?.fallback ? response?.notice : undefined;
   const sourceErrors = response?.sourceErrors ?? [];
   const uniqueSourceCount = new Set(effectiveResults.map((result) => result.sourceLabel)).size;
+  const phaseLabel = {
+    idle: "Idle",
+    loading: "Planning query...",
+    sources_loaded: "Sources loaded",
+    exact_results: "Exact spans streaming",
+    proxy_results: "Semantic proxy spans streaming",
+    reranked_results: "Reranked spans ready",
+    answer_delta: "Answer tokens streaming",
+    done: "Done",
+    error: "Stream error",
+  }[streamPhase];
 
   return (
     <div className="space-y-6">
@@ -177,6 +263,10 @@ export function SearchWorkspace({
             : health === "up"
               ? "Backend health check passed."
               : "Backend unavailable. Using mock data and local fallback responses."}
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-cyan-300/15 bg-cyan-400/10 p-4 text-sm leading-6 text-cyan-100">
+          {phaseLabel}
         </div>
 
         {sourceErrors.length > 0 ? (

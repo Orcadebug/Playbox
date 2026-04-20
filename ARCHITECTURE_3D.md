@@ -6,33 +6,30 @@ only as a way to save content for later searches. The product surface is exact r
 ranked spans, source offsets, and citations. LLM answers are optional and explicitly
 requested.
 
+UI note: the web UI is a thin onboarding/smoke surface for API key setup and stream
+verification. The backend API is the primary surface.
+
 ---
 
 ## Layer 1: User Interaction
 
 ```
-Browser UI
+API Consumer
   |
-  |-- /search
-  |     |-- SearchBar
-  |     |-- SourceControls
-  |     |     |-- saved workspace toggle
-  |     |     |-- raw source text
-  |     |     `-- webhook connector payload
-  |     |-- ResultList / ResultCard
-  |     |     `-- primary_span + matched_spans + source_origin
-  |     `-- optional AnswerCard after retrieval
+  |-- /api/v1/search
+  |-- /api/v1/search/stream
+  `-- /api/v1/upload
+
+Minimal Browser UI
   |
-  |-- /upload
-  |     |-- FileDropzone
-  |     |-- PasteBox
-  |     `-- saved source list
+  |-- API-key onboarding
+  |-- stream smoke harness
+  `-- optional demo interactions
   |
-  `-- /demo
-        `-- seeded local examples
+  `-- not the primary product surface
 ```
 
-The search page is the primary workflow. The upload page is saved-source management.
+The API is the primary workflow. The UI is intentionally lightweight.
 
 ---
 
@@ -73,9 +70,14 @@ Search responses are retrieval-first:
     }
   ],
   sources,
-  source_errors
+  source_errors,
+  execution
 }
 ```
+
+`/search/stream` emits progressive typed events:
+`sources_loaded`, `exact_results`, `proxy_results`, `reranked_results`, optional
+`answer_delta`, then `done` or `error`.
 
 `POST /api/v1/upload` persists saved sources. It is not required before search.
 
@@ -106,7 +108,7 @@ Important behavior:
 
 ---
 
-## Layer 4: Parsing And Chunking
+## Layer 4: Parsing And Windowing
 
 ```
 SearchDocument
@@ -120,34 +122,37 @@ SearchDocument
   |     |-- html
   |     `-- pdf
   |
-  `-- chunker
-        |-- regex token windows
-        |-- original whitespace preserved
+  `-- source executor
+        |-- SourceRecord extraction from parsed documents
+        |-- SourceWindow generation (line/record scoped)
         |-- source_start/source_end exact character offsets
-        `-- adjacency metadata for neighboring chunks
+        `-- neighboring window metadata
 ```
 
-Chunks are internal retrieval units. The public result is a span payload, not a chunk object.
+Windows are first-pass retrieval units. The public result is a span payload, not a window
+object.
 
 ---
 
 ## Layer 5: Retrieval
 
 ```
-RetrievalPipeline
+SpanExecutor
   |
-  |-- parse documents
-  |-- chunk with exact offsets
-  |-- retrieve candidates
-  |     |-- BM25 retriever
-  |     `-- cortical retriever
-  |           |-- query patterns
-  |           |-- trie spans
-  |           |-- sparse projection
-  |           |-- adjacency diffusion
-  |           `-- gating
+  |-- planner
+  |     |-- tiny / medium / huge tier
+  |     |-- scan_limit, candidate_limit, rerank_limit
+  |     `-- partial marker
+  |-- exact channel
+  |     |-- QueryTrie token/phrase spans
+  |     |-- substring matches
+  |     `-- regex("...") literals
+  |-- proxy channel
+  |     `-- sparse projection score (NullProjection fallback)
+  |-- structure channel
+  |     `-- metadata/location/neighbor/source-origin boosts
   |
-  |-- rerank candidates
+  |-- rerank shortlist (existing Reranker seam)
   `-- build SearchResult span payloads
 ```
 
@@ -235,10 +240,9 @@ remain request-scoped.
 ## Complete Search Cycle
 
 ```
-Browser /search
+API Client
   |
-  |-- user enters query
-  |-- user chooses saved/raw/webhook sources
+  |-- sends /api/v1/search or /api/v1/search/stream
   v
 POST /api/v1/search/stream
   |
@@ -246,19 +250,13 @@ POST /api/v1/search/stream
 SearchService loads stored + raw + connector SearchDocuments
   |
   v
-RetrievalPipeline parses, chunks, retrieves, reranks
+SpanExecutor parses, windows, plans, runs channels, reranks
   |
   v
-Pipeline builds primary_span and matched_spans
+Service emits phase events (sources/exact/proxy/reranked/answer deltas/done)
   |
   v
-Response streams to frontend
-  |
-  v
-Result cards show exact spans, offsets, source origin, score
-  |
-  v
-Optional answer generation reruns search with answer_mode="llm"
+Client reads final retrieval payload with spans and execution metadata
 ```
 
 ---
@@ -294,7 +292,7 @@ Saved source appears in /upload and can be included from /search
 | Request -> Service -> Domain | API routes, services, retrieval/parsers | Keep HTTP concerns separate from retrieval logic |
 | Provider fan-in | `SearchService` | Merge stored, raw, and connector sources into one retrieval input |
 | Registry | parsers and connectors | Add formats/services without hardcoding call sites |
-| Pipeline | `RetrievalPipeline` | Compose parsing, chunking, retrieval, reranking, and span building |
+| Pipeline | `SpanExecutor` + services | Compose parsing, windowing, planning, channels, reranking, and span building |
 | Transient indexing | raw/connector searches | Avoid making persistent prep foundational |
 | Optional synthesis | `answer_mode` | Keep LLM answers secondary to retrieval |
 

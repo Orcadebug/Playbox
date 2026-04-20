@@ -19,7 +19,7 @@ class SearchDocument:
 @dataclass(slots=True)
 class RawSearchSource:
     name: str
-    content: bytes | str
+    content: Any
     id: str | None = None
     media_type: str | None = None
     source_type: str = "raw"
@@ -42,6 +42,7 @@ class SearchSpan:
     source_end: int
     snippet_start: int
     snippet_end: int
+    offset_basis: Literal["source", "parsed"] = "source"
     highlights: list[dict[str, Any]] = field(default_factory=list)
     location: dict[str, Any] = field(default_factory=dict)
 
@@ -60,6 +61,8 @@ class SearchResult:
     spans: list[tuple[int, int]] | None = None
     primary_span: dict[str, Any] | None = None
     matched_spans: list[dict[str, Any]] = field(default_factory=list)
+    channels: list[str] = field(default_factory=list)
+    channel_scores: dict[str, float] = field(default_factory=dict)
 
     @property
     def text(self) -> str:

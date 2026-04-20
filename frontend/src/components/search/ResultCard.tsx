@@ -31,6 +31,13 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function formatScore(value: number | undefined) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "0.00";
+  }
+  return value.toFixed(2);
+}
+
 function highlightSpan(span: SearchSpan) {
   if (span.highlights.length === 0) {
     return span.snippet;
@@ -84,6 +91,12 @@ export function ResultCard({
         )
         .slice(0, 3)
     : result.matchedSpans.slice(0, 3);
+  const scoreItems = [
+    ["exact", result.channelScores.exact],
+    ["semantic", result.channelScores.semantic],
+    ["structure", result.channelScores.structure],
+    ["rerank", result.channelScores.rerank],
+  ].filter(([, value]) => typeof value === "number") as Array<[string, number]>;
 
   return (
     <article
@@ -102,6 +115,14 @@ export function ResultCard({
             <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.22em] text-cyan-200">
               {result.sourceOrigin}
             </span>
+            {result.channels.map((channel) => (
+              <span
+                key={channel}
+                className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.22em] text-emerald-100"
+              >
+                {channel}
+              </span>
+            ))}
           </div>
           <p className="mt-2 text-sm text-[rgb(var(--muted))]">
             {result.sourceLabel} · {result.location}
@@ -122,8 +143,27 @@ export function ResultCard({
             chars {result.primarySpan.sourceStart}-{result.primarySpan.sourceEnd}
           </span>
           <span className="rounded-full border border-white/10 bg-black/15 px-3 py-1">
+            {result.primarySpan.offsetBasis} offsets
+          </span>
+          <span className="rounded-full border border-white/10 bg-black/15 px-3 py-1">
             {result.primarySpan.highlights.length > 0 ? "exact span" : "context span"}
           </span>
+        </div>
+      ) : null}
+
+      {scoreItems.length > 0 ? (
+        <div className="mt-4 grid gap-2 sm:grid-cols-4">
+          {scoreItems.map(([label, value]) => (
+            <div
+              key={label}
+              className="rounded-2xl border border-white/10 bg-black/15 px-3 py-2"
+            >
+              <div className="text-[10px] uppercase tracking-[0.18em] text-[rgb(var(--muted))]">
+                {label}
+              </div>
+              <div className="mt-1 text-xs font-semibold text-white">{formatScore(value)}</div>
+            </div>
+          ))}
         </div>
       ) : null}
 

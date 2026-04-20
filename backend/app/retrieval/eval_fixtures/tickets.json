@@ -1,0 +1,93 @@
+{
+  "pack_id": "tickets",
+  "cases": [
+    {
+      "id": "tickets_exact_duplicate_charge",
+      "profiles": ["smoke", "regression", "latency"],
+      "query": "duplicate charge refund",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "ticket-1001",
+          "source_name": "ticket-1001.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Customer reports duplicate charge and asks for refund after checkout retry."
+        },
+        {
+          "source_id": "ticket-1002",
+          "source_name": "ticket-1002.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Password reset flow is failing for new users."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "ticket-1001",
+          "must_include_text": "duplicate charge",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "tickets_semantic_duplicate_charge",
+      "profiles": ["smoke", "regression", "semantic"],
+      "query": "customer billed twice after checkout retry",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "ticket-2001",
+          "source_name": "ticket-2001.txt",
+          "source_origin": "connector",
+          "source_type": "ticket",
+          "content": "Checkout retry caused a duplicate charge on the invoice and triggered a complaint."
+        },
+        {
+          "source_id": "ticket-2002",
+          "source_name": "ticket-2002.txt",
+          "source_origin": "connector",
+          "source_type": "ticket",
+          "content": "Shipping label printing queue is delayed."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "ticket-2001",
+          "must_include_text": "duplicate charge",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "tickets_negative_disallowed_source",
+      "profiles": ["smoke", "regression"],
+      "query": "refund approved for account 77",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "ticket-3001",
+          "source_name": "ticket-3001.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Refund approved for account 77 after duplicate settlement."
+        },
+        {
+          "source_id": "ticket-3002",
+          "source_name": "ticket-3002.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Shipping update only. No billing actions required."
+        }
+      ],
+      "disallowed_sources": ["ticket-3002"],
+      "expected": [
+        {
+          "source_id": "ticket-3001",
+          "must_include_text": "Refund approved",
+          "match_type": "exact"
+        }
+      ]
+    }
+  ]
+}

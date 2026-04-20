@@ -17,8 +17,8 @@ router = APIRouter()
 class RawSourcePayload(BaseModel):
     id: str | None = None
     name: str
-    content: str
-    media_type: str | None = "text/plain"
+    content: Any
+    media_type: str | None = None
     source_type: str = "raw"
     metadata: dict[str, Any] = Field(default_factory=dict)
 
