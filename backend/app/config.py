@@ -27,7 +27,9 @@ class Settings(BaseSettings):
     bm25_cache_max_entries: int = 10
     bm25_use_stemming: bool = True
     bm25_use_stopwords: bool = True
-    waver_retriever: Literal["bm25", "cortical"] = "bm25"
+    waver_retriever: Literal["bm25", "sps", "cortical"] = "sps"
+    waver_sps_alpha: float = 0.6
+    waver_sps_candidate_multiplier: int = 3
     waver_candidate_cap: int = 2000
     waver_trie_max_patterns: int = 2000
     waver_trie_phrase_ngram: int = 2

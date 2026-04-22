@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    import numpy as np
+
     from app.retrieval.bm25 import BM25Index
     from app.schemas.documents import Chunk
 
@@ -26,6 +28,7 @@ class _CacheEntry:
     index: BM25Index
     content_hash: str
     created_at: float = field(default_factory=time.monotonic)
+    chunk_embeddings: np.ndarray | None = None
 
 
 def _chunks_hash(chunks: list[Chunk]) -> str:
@@ -93,6 +96,24 @@ class BM25IndexCache:
             self._set(workspace_id, _CacheEntry(index=index, content_hash=content_hash))
 
         return index
+
+    def get_embeddings(self, workspace_id: str, content_hash: str):  # type: ignore[no-untyped-def]
+        """Return cached chunk embeddings if fresh and content_hash matches, else None."""
+        with self._lock:
+            entry = self._cache.get(workspace_id)
+            if entry is None or entry.content_hash != content_hash:
+                return None
+            if time.monotonic() - entry.created_at >= self._ttl:
+                return None
+            return entry.chunk_embeddings
+
+    def set_embeddings(self, workspace_id: str, content_hash: str, embeddings) -> None:  # type: ignore[no-untyped-def]
+        """Attach chunk embeddings to an existing cache entry (must match content_hash)."""
+        with self._lock:
+            entry = self._cache.get(workspace_id)
+            if entry is None or entry.content_hash != content_hash:
+                return
+            entry.chunk_embeddings = embeddings
 
     def invalidate(self, workspace_id: str) -> None:
         with self._lock:

@@ -181,6 +181,102 @@ def test_retriever_flag_rejects_unknown() -> None:
 
 
 # ---------------------------------------------------------------------------
+# SpsRetriever tests — BM25 + semantic projection fusion
+# ---------------------------------------------------------------------------
+
+def _sps_chunks(contents: list[tuple[str, str]]):
+    """Build one chunk per (content, source_name) pair."""
+    chunks = []
+    for content, name in contents:
+        chunks.extend(
+            chunk_document(ParsedDocument(content=content, source_name=name), max_tokens=20)
+        )
+    return chunks
+
+
+def test_sps_retriever_recalls_synonym() -> None:
+    from app.retrieval.sps import SpsRetriever
+
+    chunks = _sps_chunks([
+        ("customer charged duplicate", "charge.txt"),
+        ("weather forecast tomorrow", "weather.txt"),
+        ("refund issued successfully", "refund.txt"),
+    ])
+    retriever = SpsRetriever(
+        projection=DeterministicSemanticProjection(),
+        cache=None,
+        alpha=0.4,
+    )
+
+    # "billed twice" has zero lexical overlap with any chunk — BM25 alone returns nothing.
+    bm25_only = BM25Index(chunks).search("billed twice", top_k=3)
+    assert not bm25_only
+
+    hits = retriever.search("billed twice", chunks, top_k=3, workspace_id="ws-syn")
+    assert hits, "SPS should surface the synonym chunk"
+    assert hits[0].chunk.source_name == "charge.txt"
+
+
+def test_sps_retriever_preserves_bm25_on_exact_match() -> None:
+    from app.retrieval.sps import SpsRetriever
+
+    chunks = _sps_chunks([
+        ("billing refund issue for customer", "hit.txt"),
+        ("unrelated weather report", "weather.txt"),
+        ("shipping delay at warehouse", "ship.txt"),
+    ])
+    retriever = SpsRetriever(
+        projection=DeterministicSemanticProjection(),
+        cache=None,
+        alpha=0.7,
+    )
+    hits = retriever.search("billing refund", chunks, top_k=3, workspace_id="ws-exact")
+    assert hits[0].chunk.source_name == "hit.txt"
+
+
+def test_sps_retriever_uses_embedding_cache() -> None:
+    from app.retrieval.sps import SpsRetriever
+
+    class _CountingProjection:
+        def __init__(self) -> None:
+            self._inner = DeterministicSemanticProjection()
+            self.encode_chunks_calls = 0
+
+        def encode_query(self, query):
+            return self._inner.encode_query(query)
+
+        def encode_chunks(self, chunks):
+            self.encode_chunks_calls += 1
+            return self._inner.encode_chunks(chunks)
+
+        def score(self, qv, cv):
+            return self._inner.score(qv, cv)
+
+    chunks = _sps_chunks([
+        ("customer charged duplicate", "a.txt"),
+        ("refund issued", "b.txt"),
+    ])
+    proj = _CountingProjection()
+    cache = BM25IndexCache(ttl=60.0, max_entries=5)
+    retriever = SpsRetriever(projection=proj, cache=cache, alpha=0.5)  # type: ignore[arg-type]
+
+    retriever.search("billed twice", chunks, top_k=2, workspace_id="ws-cache")
+    retriever.search("double charge", chunks, top_k=2, workspace_id="ws-cache")
+
+    assert proj.encode_chunks_calls == 1, (
+        f"encode_chunks should be cached across queries; called {proj.encode_chunks_calls}x"
+    )
+
+
+def test_sps_retriever_empty_inputs() -> None:
+    from app.retrieval.sps import SpsRetriever
+
+    retriever = SpsRetriever(projection=DeterministicSemanticProjection(), cache=None)
+    assert retriever.search("", _sps_chunks([("x", "a.txt")]), top_k=3, workspace_id="ws") == []
+    assert retriever.search("query", [], top_k=3, workspace_id="ws") == []
+
+
+# ---------------------------------------------------------------------------
 # Query trie tests
 # ---------------------------------------------------------------------------
 

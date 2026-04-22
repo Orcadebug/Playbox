@@ -45,13 +45,24 @@ def _build_retriever(settings: Settings, bm25_cache: BM25IndexCache) -> Retrieve
             use_stemming=settings.bm25_use_stemming,
             use_stopwords=settings.bm25_use_stopwords,
         )
+    if settings.waver_retriever == "sps":
+        from app.retrieval.sps import SpsRetriever  # noqa: PLC0415
+
+        projection_config = ProjectionConfig(
+            hash_features=settings.projection_hash_features,
+            dim=settings.projection_dim,
+        )
+        return SpsRetriever(
+            cache=bm25_cache,
+            projection=load_projection(settings.projection_model_path, projection_config),
+            alpha=settings.waver_sps_alpha,
+            candidate_multiplier=settings.waver_sps_candidate_multiplier,
+            use_stemming=settings.bm25_use_stemming,
+            use_stopwords=settings.bm25_use_stopwords,
+        )
     if settings.waver_retriever == "cortical":
         from app.retrieval.cortical import CorticalRetriever, default_trie_builder  # noqa: PLC0415
         from app.retrieval.diffusion import DiffusionConfig  # noqa: PLC0415
-        from app.retrieval.sparse_projection import (  # noqa: PLC0415
-            ProjectionConfig,
-            load_projection,
-        )
 
         projection_config = ProjectionConfig(
             hash_features=settings.projection_hash_features,
