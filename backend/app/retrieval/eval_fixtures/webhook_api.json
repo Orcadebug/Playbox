@@ -1,0 +1,67 @@
+{
+  "pack_id": "webhook_api",
+  "cases": [
+    {
+      "id": "webhook_json_exact_timeout",
+      "profiles": ["smoke", "regression", "latency"],
+      "query": "status code 503 timeout",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "webhook-500",
+          "source_name": "webhook-500.json",
+          "source_origin": "connector",
+          "source_type": "webhook",
+          "media_type": "application/json",
+          "content": "{\"service\":\"billing-api\",\"status_code\":503,\"error\":\"timeout contacting ledger\"}"
+        },
+        {
+          "source_id": "webhook-ok",
+          "source_name": "webhook-ok.json",
+          "source_origin": "connector",
+          "source_type": "webhook",
+          "media_type": "application/json",
+          "content": "{\"service\":\"billing-api\",\"status_code\":200,\"error\":null}"
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "webhook-500",
+          "must_include_text": "503",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "webhook_json_semantic_failure",
+      "profiles": ["regression", "semantic"],
+      "query": "payment failed repeatedly",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "webhook-pay-1",
+          "source_name": "webhook-pay-1.json",
+          "source_origin": "connector",
+          "source_type": "webhook",
+          "media_type": "application/json",
+          "content": "{\"payment_status\":\"declined\",\"attempts\":3,\"last_error\":\"processor unavailable\"}"
+        },
+        {
+          "source_id": "webhook-pay-2",
+          "source_name": "webhook-pay-2.json",
+          "source_origin": "connector",
+          "source_type": "webhook",
+          "media_type": "application/json",
+          "content": "{\"payment_status\":\"captured\",\"attempts\":1}"
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "webhook-pay-1",
+          "must_include_text": "declined",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    }
+  ]
+}

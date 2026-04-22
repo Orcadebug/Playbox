@@ -16,11 +16,14 @@ def test_detect_parser_name_uses_content_sniffing_before_extension() -> None:
 
 
 def test_parser_detector_routes_and_parses_common_formats() -> None:
-    detector = ParserDetector(registry=build_default_parser_registry(), default_parser=PlainTextParser())
+    detector = ParserDetector(
+        registry=build_default_parser_registry(), default_parser=PlainTextParser()
+    )
 
     plain = detector.parse("notes.txt", b" hello world ")
     assert plain.parser_name == "plaintext"
-    assert plain.content == "hello world"
+    assert plain.content == " hello world "
+    assert plain.documents[0].metadata["offset_basis"] == "source"
 
     markdown = MarkdownParser().parse("readme.md", b"# Title\n\n* item*")
     assert markdown.parser_name == "markdown"
@@ -50,4 +53,3 @@ def test_parser_detector_routes_and_parses_common_formats() -> None:
     assert pdf_file.parser_name == "pdf"
     assert pdf_file.documents
     assert "Hello from pdf" in pdf_file.documents[0].content
-

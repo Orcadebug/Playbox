@@ -1,6 +1,14 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const STORAGE_KEY = "waver.mock.sources";
 
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
 type BackendSearchPayload = {
   query: string;
   results: Array<{
@@ -17,6 +25,8 @@ type BackendSearchPayload = {
     source_origin?: "stored" | "raw" | "connector";
     primary_span?: BackendSearchSpan | null;
     matched_spans?: BackendSearchSpan[];
+    channels?: string[];
+    channel_scores?: Record<string, number>;
   }>;
   answer?: {
     markdown?: string;
@@ -24,6 +34,23 @@ type BackendSearchPayload = {
   } | null;
   answer_error?: string | null;
   source_errors?: BackendSourceError[];
+  execution?: BackendExecution;
+};
+
+type BackendExecution = {
+  tier?: string;
+  channels?: string[];
+  window_count?: number;
+  scan_limit?: number;
+  candidate_limit?: number;
+  rerank_limit?: number;
+  partial?: boolean;
+  metadata_prefilter?: boolean;
+  use_cache?: boolean;
+  scanned_windows?: number;
+  candidate_count?: number;
+  shortlisted_candidates?: number;
+  [key: string]: unknown;
 };
 
 type BackendSearchSpan = {
@@ -33,11 +60,13 @@ type BackendSearchSpan = {
   source_end: number;
   snippet_start: number;
   snippet_end: number;
+  offset_basis?: "source" | "parsed";
   highlights: Array<{
     start: number;
     end: number;
     source_start?: number;
     source_end?: number;
+    offset_basis?: "source" | "parsed";
     text?: string;
   }>;
   location?: Record<string, unknown>;
@@ -77,7 +106,7 @@ type SearchPayload = {
 export type RawSearchSource = {
   id?: string;
   name: string;
-  content: string;
+  content: JsonValue;
   media_type?: string;
   source_type?: string;
   metadata?: Record<string, unknown>;
@@ -116,11 +145,13 @@ export type SearchSpan = {
   sourceEnd: number;
   snippetStart: number;
   snippetEnd: number;
+  offsetBasis: "source" | "parsed";
   highlights: Array<{
     start: number;
     end: number;
     sourceStart?: number;
     sourceEnd?: number;
+    offsetBasis?: "source" | "parsed";
     text?: string;
   }>;
   location?: Record<string, unknown>;
@@ -138,6 +169,8 @@ export type SearchResult = {
   sourceOrigin: "stored" | "raw" | "connector";
   primarySpan: SearchSpan | null;
   matchedSpans: SearchSpan[];
+  channels: string[];
+  channelScores: Record<string, number>;
 };
 
 export type SearchAnswer = {
@@ -153,10 +186,38 @@ export type SearchResponse = {
   fallback: boolean;
   notice?: string;
   sourceErrors: BackendSourceError[];
+  execution?: BackendExecution;
   metadata?: {
     backend: boolean;
   };
 };
+
+export type SearchStreamEvent =
+  | {
+      type: "sources_loaded";
+      query: string;
+      sourceErrors: BackendSourceError[];
+      execution?: BackendExecution;
+    }
+  | {
+      type: "exact_results" | "proxy_results" | "reranked_results";
+      response: SearchResponse;
+    }
+  | {
+      type: "answer_delta";
+      query: string;
+      delta: string;
+    }
+  | {
+      type: "done";
+      response: SearchResponse;
+    }
+  | {
+      type: "error";
+      query: string;
+      message: string;
+      response?: SearchResponse;
+    };
 
 export type UploadedSource = {
   id: string;
@@ -289,10 +350,17 @@ function buildMockSearch(query: string, notice?: string): SearchResponse {
       sourceEnd: passage.text.length,
       snippetStart: 0,
       snippetEnd: passage.text.length,
+      offsetBasis: "source",
       highlights: [],
       location: { label: passage.location },
     },
     matchedSpans: [],
+    channels: ["exact"],
+    channelScores: {
+      exact: Math.max(0.18, passage.score),
+      semantic: 0,
+      structure: 0,
+    },
   }));
 
   const citations = results.slice(0, 3).map((result, index) => ({
@@ -372,11 +440,13 @@ function backendSpanToSearchSpan(span?: BackendSearchSpan | null): SearchSpan | 
     sourceEnd: span.source_end,
     snippetStart: span.snippet_start,
     snippetEnd: span.snippet_end,
+    offsetBasis: span.offset_basis ?? "source",
     highlights: span.highlights.map((highlight) => ({
       start: highlight.start,
       end: highlight.end,
       sourceStart: highlight.source_start,
       sourceEnd: highlight.source_end,
+      offsetBasis: highlight.offset_basis,
       text: highlight.text,
     })),
     location: span.location,
@@ -411,6 +481,14 @@ function backendToSearchResponse(payload: BackendSearchPayload): SearchResponse 
       matchedSpans: (result.matched_spans ?? [])
         .map(backendSpanToSearchSpan)
         .filter((span): span is SearchSpan => span !== null),
+      channels:
+        result.channels ??
+        (Array.isArray(metadata.channels) ? metadata.channels.map(String) : []),
+      channelScores:
+        result.channel_scores ??
+        (typeof metadata.channel_scores === "object" && metadata.channel_scores !== null
+          ? (metadata.channel_scores as Record<string, number>)
+          : {}),
     };
   });
 
@@ -432,6 +510,7 @@ function backendToSearchResponse(payload: BackendSearchPayload): SearchResponse 
     fallback: Boolean(payload.answer_error),
     notice: payload.answer_error ?? undefined,
     sourceErrors: payload.source_errors ?? [],
+    execution: payload.execution,
     metadata: {
       backend: true,
     },
@@ -566,7 +645,10 @@ export async function checkHealthz(): Promise<boolean> {
   }
 }
 
-export async function streamSearch(payload: SearchPayload): Promise<SearchResponse> {
+export async function streamSearch(
+  payload: SearchPayload,
+  onEvent?: (event: SearchStreamEvent) => void,
+): Promise<SearchResponse> {
   if (payload.mode === "demo") {
     return buildMockSearch(payload.query, "Demo mode is using a seeded local corpus.");
   }
@@ -597,6 +679,7 @@ export async function streamSearch(payload: SearchPayload): Promise<SearchRespon
 
     let buffer = "";
     let lastResponse: SearchResponse | null = null;
+    let latestSourceErrors: BackendSourceError[] = [];
     const decoder = new TextDecoder();
 
     while (true) {
@@ -610,8 +693,76 @@ export async function streamSearch(payload: SearchPayload): Promise<SearchRespon
       for (const line of lines) {
         if (line.startsWith("data: ")) {
           try {
-            const payload = JSON.parse(line.slice(6)) as BackendSearchPayload;
-            lastResponse = backendToSearchResponse(payload);
+            const eventPayload = JSON.parse(line.slice(6)) as
+              | BackendSearchPayload
+              | {
+                  event?: string;
+                  query?: string;
+                  message?: string;
+                  delta?: string;
+                  results?: BackendSearchPayload["results"];
+                  source_errors?: BackendSourceError[];
+                  execution?: BackendExecution;
+                  answer?: BackendSearchPayload["answer"];
+                  answer_error?: string | null;
+                };
+
+            if (!("event" in eventPayload) || !eventPayload.event) {
+              lastResponse = backendToSearchResponse(eventPayload as BackendSearchPayload);
+              continue;
+            }
+
+            const event = eventPayload.event;
+            if (event === "sources_loaded") {
+              latestSourceErrors = eventPayload.source_errors ?? [];
+              onEvent?.({
+                type: "sources_loaded",
+                query: eventPayload.query ?? payload.query,
+                sourceErrors: latestSourceErrors,
+                execution: eventPayload.execution,
+              });
+              continue;
+            }
+
+            if (event === "answer_delta") {
+              onEvent?.({
+                type: "answer_delta",
+                query: eventPayload.query ?? payload.query,
+                delta: eventPayload.delta ?? "",
+              });
+              continue;
+            }
+
+            if (event === "error") {
+              onEvent?.({
+                type: "error",
+                query: eventPayload.query ?? payload.query,
+                message: eventPayload.message ?? "Search stream failed",
+                response: lastResponse ?? undefined,
+              });
+              continue;
+            }
+
+            const phasePayload: BackendSearchPayload = {
+              query: eventPayload.query ?? payload.query,
+              results: eventPayload.results ?? [],
+              answer: eventPayload.answer ?? null,
+              answer_error: eventPayload.answer_error ?? null,
+              source_errors: eventPayload.source_errors ?? latestSourceErrors,
+              execution: eventPayload.execution,
+            };
+            const responseValue = backendToSearchResponse(phasePayload);
+            lastResponse = responseValue;
+
+            if (event === "done") {
+              onEvent?.({ type: "done", response: responseValue });
+            } else if (
+              event === "exact_results" ||
+              event === "proxy_results" ||
+              event === "reranked_results"
+            ) {
+              onEvent?.({ type: event, response: responseValue });
+            }
           } catch {
             // Skip invalid JSON lines
           }

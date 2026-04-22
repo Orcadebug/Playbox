@@ -36,7 +36,15 @@ class HTMLParser(BaseParser):
         extractor = _TextExtractor()
         extractor.feed(text)
         extractor.close()
-        document = ParsedDocument(content=extractor.text().strip(), source_name=file_name)
+        document = ParsedDocument(
+            content=extractor.text().strip(),
+            source_name=file_name,
+            metadata={
+                "raw_source_start": 0,
+                "raw_source_end": len(text),
+                "offset_basis": "parsed",
+            },
+        )
         return ParsedFile(
             file_name=file_name,
             documents=[document] if document.content else [],

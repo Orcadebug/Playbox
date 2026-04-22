@@ -1,0 +1,786 @@
+{
+  "pack_id": "tickets_exact_lookups",
+  "authorship": "ai-generated",
+  "cases": [
+    {
+      "id": "exact_lookup_01",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "regex(\"TCK-4101\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-01-gold",
+          "source_name": "TCK-4101.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4101 appears on the escalation note for customer alpha 01. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-01-noise",
+          "source_name": "near-TCK-4101.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5101 mentions escalation note and customer alpha 01, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-01-gold",
+          "must_include_text": "TCK-4101",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_02",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "regex(\"TCK-4102\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-02-gold",
+          "source_name": "TCK-4102.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4102 appears on the escalation note for customer alpha 02. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-02-noise",
+          "source_name": "near-TCK-4102.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5102 mentions escalation note and customer alpha 02, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-02-gold",
+          "must_include_text": "TCK-4102",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_03",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "regex(\"TCK-4103\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-03-gold",
+          "source_name": "TCK-4103.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4103 appears on the escalation note for customer alpha 03. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-03-noise",
+          "source_name": "near-TCK-4103.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5103 mentions escalation note and customer alpha 03, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-03-gold",
+          "must_include_text": "TCK-4103",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_04",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "regex(\"TCK-4104\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-04-gold",
+          "source_name": "TCK-4104.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4104 appears on the escalation note for customer alpha 04. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-04-noise",
+          "source_name": "near-TCK-4104.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5104 mentions escalation note and customer alpha 04, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-04-gold",
+          "must_include_text": "TCK-4104",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_05",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "regex(\"TCK-4105\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-05-gold",
+          "source_name": "TCK-4105.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4105 appears on the escalation note for customer alpha 05. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-05-noise",
+          "source_name": "near-TCK-4105.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5105 mentions escalation note and customer alpha 05, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-05-gold",
+          "must_include_text": "TCK-4105",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_06",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4106\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-06-gold",
+          "source_name": "TCK-4106.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4106 appears on the escalation note for customer alpha 06. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-06-noise",
+          "source_name": "near-TCK-4106.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5106 mentions escalation note and customer alpha 06, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-06-gold",
+          "must_include_text": "TCK-4106",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_07",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4107\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-07-gold",
+          "source_name": "TCK-4107.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4107 appears on the escalation note for customer alpha 07. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-07-noise",
+          "source_name": "near-TCK-4107.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5107 mentions escalation note and customer alpha 07, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-07-gold",
+          "must_include_text": "TCK-4107",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_08",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4108\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-08-gold",
+          "source_name": "TCK-4108.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4108 appears on the escalation note for customer alpha 08. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-08-noise",
+          "source_name": "near-TCK-4108.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5108 mentions escalation note and customer alpha 08, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-08-gold",
+          "must_include_text": "TCK-4108",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_09",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4109\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-09-gold",
+          "source_name": "TCK-4109.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4109 appears on the escalation note for customer alpha 09. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-09-noise",
+          "source_name": "near-TCK-4109.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5109 mentions escalation note and customer alpha 09, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-09-gold",
+          "must_include_text": "TCK-4109",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_10",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4110\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-10-gold",
+          "source_name": "TCK-4110.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4110 appears on the escalation note for customer alpha 10. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-10-noise",
+          "source_name": "near-TCK-4110.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5110 mentions escalation note and customer alpha 10, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-10-gold",
+          "must_include_text": "TCK-4110",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_11",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4111\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-11-gold",
+          "source_name": "TCK-4111.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4111 appears on the escalation note for customer alpha 11. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-11-noise",
+          "source_name": "near-TCK-4111.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5111 mentions escalation note and customer alpha 11, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-11-gold",
+          "must_include_text": "TCK-4111",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_12",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4112\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-12-gold",
+          "source_name": "TCK-4112.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4112 appears on the escalation note for customer alpha 12. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-12-noise",
+          "source_name": "near-TCK-4112.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5112 mentions escalation note and customer alpha 12, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-12-gold",
+          "must_include_text": "TCK-4112",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_13",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4113\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-13-gold",
+          "source_name": "TCK-4113.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4113 appears on the escalation note for customer alpha 13. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-13-noise",
+          "source_name": "near-TCK-4113.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5113 mentions escalation note and customer alpha 13, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-13-gold",
+          "must_include_text": "TCK-4113",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_14",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4114\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-14-gold",
+          "source_name": "TCK-4114.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4114 appears on the escalation note for customer alpha 14. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-14-noise",
+          "source_name": "near-TCK-4114.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5114 mentions escalation note and customer alpha 14, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-14-gold",
+          "must_include_text": "TCK-4114",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_15",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4115\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-15-gold",
+          "source_name": "TCK-4115.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4115 appears on the escalation note for customer alpha 15. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-15-noise",
+          "source_name": "near-TCK-4115.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5115 mentions escalation note and customer alpha 15, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-15-gold",
+          "must_include_text": "TCK-4115",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_16",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4116\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-16-gold",
+          "source_name": "TCK-4116.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4116 appears on the escalation note for customer alpha 16. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-16-noise",
+          "source_name": "near-TCK-4116.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5116 mentions escalation note and customer alpha 16, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-16-gold",
+          "must_include_text": "TCK-4116",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_17",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4117\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-17-gold",
+          "source_name": "TCK-4117.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4117 appears on the escalation note for customer alpha 17. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-17-noise",
+          "source_name": "near-TCK-4117.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5117 mentions escalation note and customer alpha 17, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-17-gold",
+          "must_include_text": "TCK-4117",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_18",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4118\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-18-gold",
+          "source_name": "TCK-4118.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4118 appears on the escalation note for customer alpha 18. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-18-noise",
+          "source_name": "near-TCK-4118.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5118 mentions escalation note and customer alpha 18, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-18-gold",
+          "must_include_text": "TCK-4118",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_19",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4119\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-19-gold",
+          "source_name": "TCK-4119.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4119 appears on the escalation note for customer alpha 19. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-19-noise",
+          "source_name": "near-TCK-4119.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5119 mentions escalation note and customer alpha 19, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-19-gold",
+          "must_include_text": "TCK-4119",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_20",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4120\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-20-gold",
+          "source_name": "TCK-4120.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4120 appears on the escalation note for customer alpha 20. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-20-noise",
+          "source_name": "near-TCK-4120.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5120 mentions escalation note and customer alpha 20, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-20-gold",
+          "must_include_text": "TCK-4120",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_21",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4121\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-21-gold",
+          "source_name": "TCK-4121.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4121 appears on the escalation note for customer alpha 21. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-21-noise",
+          "source_name": "near-TCK-4121.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5121 mentions escalation note and customer alpha 21, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-21-gold",
+          "must_include_text": "TCK-4121",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_22",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4122\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-22-gold",
+          "source_name": "TCK-4122.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4122 appears on the escalation note for customer alpha 22. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-22-noise",
+          "source_name": "near-TCK-4122.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5122 mentions escalation note and customer alpha 22, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-22-gold",
+          "must_include_text": "TCK-4122",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_23",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4123\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-23-gold",
+          "source_name": "TCK-4123.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4123 appears on the escalation note for customer alpha 23. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-23-noise",
+          "source_name": "near-TCK-4123.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5123 mentions escalation note and customer alpha 23, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-23-gold",
+          "must_include_text": "TCK-4123",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_24",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4124\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-24-gold",
+          "source_name": "TCK-4124.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4124 appears on the escalation note for customer alpha 24. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-24-noise",
+          "source_name": "near-TCK-4124.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5124 mentions escalation note and customer alpha 24, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-24-gold",
+          "must_include_text": "TCK-4124",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "exact_lookup_25",
+      "profiles": [
+        "regression"
+      ],
+      "query": "regex(\"TCK-4125\")",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "exact-25-gold",
+          "source_name": "TCK-4125.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Case marker TCK-4125 appears on the escalation note for customer alpha 25. Agent copied the literal lookup token for audit."
+        },
+        {
+          "source_id": "exact-25-noise",
+          "source_name": "near-TCK-4125.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Nearby case TCK-5125 mentions escalation note and customer alpha 25, but it is not the requested marker."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "exact-25-gold",
+          "must_include_text": "TCK-4125",
+          "match_type": "exact"
+        }
+      ]
+    }
+  ]
+}

@@ -8,7 +8,16 @@ from app.retrieval.pipeline import RetrievalPipeline
 from app.retrieval.query_patterns import build_query_patterns
 from app.retrieval.reranker import AutoReranker, HeuristicReranker, Reranker
 from app.retrieval.retriever import Bm25Retriever, Retriever
+from app.retrieval.source_executor import (
+    SourceRecord,
+    SourceWindow,
+    build_source_records,
+    build_source_windows,
+    build_source_windows_from_documents,
+)
+from app.retrieval.span_executor import SpanExecutionOutcome, SpanExecutor, WindowCandidate
 from app.retrieval.sparse_projection import (
+    DeterministicSemanticProjection,
     NullProjection,
     ProjectionConfig,
     SparseProjection,
@@ -23,6 +32,7 @@ __all__ = [
     "BM25ScoredChunk",
     "Bm25Retriever",
     "CorticalRetriever",
+    "DeterministicSemanticProjection",
     "DiffusionConfig",
     "HeuristicReranker",
     "NullProjection",
@@ -34,10 +44,18 @@ __all__ = [
     "Retriever",
     "SearchDocument",
     "SearchResult",
+    "SourceRecord",
+    "SourceWindow",
     "SparseProjection",
+    "SpanExecutionOutcome",
+    "SpanExecutor",
     "TrieHit",
+    "WindowCandidate",
     "build_adjacency",
     "build_query_patterns",
+    "build_source_records",
+    "build_source_windows",
+    "build_source_windows_from_documents",
     "chunk_document",
     "chunk_documents",
     "default_trie_builder",

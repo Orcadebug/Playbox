@@ -4,7 +4,6 @@ import re
 
 from app.parsers.base import BaseParser, ParsedDocument, ParsedFile
 
-
 _MARKDOWN_PATTERNS = [
     (re.compile(r"^#{1,6}\s+", re.MULTILINE), ""),
     (re.compile(r"`([^`]*)`"), r"\1"),
@@ -27,7 +26,15 @@ class MarkdownParser(BaseParser):
             cleaned = pattern.sub(replacement, cleaned)
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
         cleaned = "\n".join(line.strip() for line in cleaned.splitlines()).strip()
-        document = ParsedDocument(content=cleaned, source_name=file_name)
+        document = ParsedDocument(
+            content=cleaned,
+            source_name=file_name,
+            metadata={
+                "raw_source_start": 0,
+                "raw_source_end": len(text),
+                "offset_basis": "parsed",
+            },
+        )
         return ParsedFile(
             file_name=file_name,
             documents=[document] if document.content else [],

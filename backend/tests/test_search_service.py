@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 
 import pytest
@@ -36,6 +37,34 @@ async def _row_count(session: AsyncSession, model: type[Base]) -> int:
     return int(await session.scalar(select(func.count()).select_from(model)) or 0)
 
 
+async def _collect_stream_events(
+    service: SearchService,
+    *,
+    query: str,
+    top_k: int = 3,
+    answer_mode: str = "off",
+    raw_sources: list[dict] | None = None,
+    connector_configs: list[dict] | None = None,
+) -> list[dict]:
+    events: list[dict] = []
+    async for chunk in service.stream_search(
+        query=query,
+        top_k=top_k,
+        source_ids=None,
+        workspace_id="default",
+        include_stored_sources=False,
+        answer_mode=answer_mode,
+        raw_sources=raw_sources or [],
+        connector_configs=connector_configs or [],
+    ):
+        if not chunk.startswith("data: "):
+            continue
+        payload = json.loads(chunk[6:].strip())
+        if isinstance(payload, dict):
+            events.append(payload)
+    return events
+
+
 async def test_raw_source_search_does_not_persist_rows(session: AsyncSession) -> None:
     service = _service(session)
     cache = BM25IndexCache(ttl=60.0, max_entries=5)
@@ -66,6 +95,41 @@ async def test_raw_source_search_does_not_persist_rows(session: AsyncSession) ->
     assert response["answer_error"] is None
     with cache._lock:
         assert cache._cache == {}
+    assert await _row_count(session, Source) == 0
+    assert await _row_count(session, Document) == 0
+
+
+async def test_structured_raw_json_searches_immediately_without_persistence(
+    session: AsyncSession,
+) -> None:
+    service = _service(session)
+
+    response = await service.search(
+        query="duplicate charge",
+        top_k=3,
+        source_ids=None,
+        workspace_id="default",
+        include_stored_sources=False,
+        raw_sources=[
+            {
+                "id": "raw-json-ticket",
+                "name": "live-ticket.json",
+                "content": {
+                    "ticket": "A-7",
+                    "customer": "Acme",
+                    "issue": "Customer billed twice yesterday",
+                },
+            }
+        ],
+    )
+
+    assert response["results"]
+    result = response["results"][0]
+    assert result["source_origin"] == "raw"
+    assert result["metadata"]["media_type"] == "application/json"
+    assert "semantic" in result["channels"]
+    assert result["channel_scores"]["semantic"] > 0
+    assert result["primary_span"]["offset_basis"] == "parsed"
     assert await _row_count(session, Source) == 0
     assert await _row_count(session, Document) == 0
 
@@ -105,6 +169,76 @@ async def test_webhook_connector_search_is_transient_when_live_connectors_disabl
     assert response["source_errors"] == []
     assert await _row_count(session, Source) == 0
     assert await _row_count(session, Document) == 0
+
+
+async def test_structured_webhook_payload_uses_semantic_fallback(session: AsyncSession) -> None:
+    service = _service(session)
+
+    response = await service.search(
+        query="duplicate charge",
+        top_k=3,
+        source_ids=None,
+        workspace_id="default",
+        include_stored_sources=False,
+        connector_configs=[
+            {
+                "connector_id": "webhook",
+                "documents": [
+                    {
+                        "name": "ticket-structured.json",
+                        "content": {
+                            "customer": "Acme",
+                            "issue": "Customer billed twice",
+                        },
+                    }
+                ],
+            }
+        ],
+    )
+
+    assert response["results"]
+    result = response["results"][0]
+    assert result["source_origin"] == "connector"
+    assert result["metadata"]["media_type"] == "application/json"
+    assert "semantic" in result["channels"]
+    assert result["channel_scores"]["semantic"] > 0
+    assert await _row_count(session, Source) == 0
+    assert await _row_count(session, Document) == 0
+
+
+async def test_mixed_exact_and_semantic_channels_return_one_ranked_experience(
+    session: AsyncSession,
+) -> None:
+    service = _service(session)
+
+    response = await service.search(
+        query="duplicate charge",
+        top_k=5,
+        source_ids=None,
+        workspace_id="default",
+        include_stored_sources=False,
+        raw_sources=[
+            {
+                "id": "exact-note",
+                "name": "exact.txt",
+                "content": "Customer reported a duplicate charge on the invoice.",
+            },
+            {
+                "id": "semantic-note",
+                "name": "semantic.txt",
+                "content": "Customer was billed twice and asked for help.",
+            },
+        ],
+    )
+
+    assert len(response["results"]) >= 2
+    channels_by_source = {
+        result["source_id"]: set(result["channels"])
+        for result in response["results"]
+    }
+    assert "exact" in channels_by_source["exact-note"]
+    assert "semantic" in channels_by_source["semantic-note"]
+    assert all("channel_scores" in result for result in response["results"])
 
 
 async def test_unknown_and_disabled_connectors_return_source_errors(
@@ -260,3 +394,79 @@ async def test_answer_mode_llm_preserves_results_on_answer_error(
     assert response["results"]
     assert response["answer"] is None
     assert response["answer_error"] == "Answer generation unavailable"
+
+
+async def test_search_response_includes_execution_metadata(session: AsyncSession) -> None:
+    service = _service(session)
+
+    response = await service.search(
+        query="billing",
+        top_k=2,
+        source_ids=None,
+        workspace_id="default",
+        include_stored_sources=False,
+        raw_sources=[{"name": "note.txt", "content": "billing refund"}],
+    )
+
+    assert "execution" in response
+    assert isinstance(response["execution"], dict)
+    assert "scan_limit" in response["execution"]
+    assert "candidate_count" in response["execution"]
+    assert "elapsed_ms" in response["execution"]
+    assert "bytes_loaded" in response["execution"]
+    assert "skipped_windows" in response["execution"]
+    assert "completion_reason" in response["execution"]
+    assert "phase_counts" in response["execution"]
+
+
+async def test_stream_search_emits_progressive_events_in_order(session: AsyncSession) -> None:
+    service = _service(session)
+
+    events = await _collect_stream_events(
+        service,
+        query="billing refund",
+        raw_sources=[{"name": "note.txt", "content": "billing refund duplicate charge"}],
+    )
+
+    assert events
+    assert events[0]["event"] == "sources_loaded"
+    assert events[-1]["event"] == "done"
+    event_types = [event["event"] for event in events]
+    assert any(
+        event_type in {"exact_results", "proxy_results", "reranked_results"}
+        for event_type in event_types
+    )
+    done = events[-1]
+    assert done["results"]
+    assert done["source_errors"] == []
+    assert "execution" in done
+
+
+async def test_stream_search_answer_mode_emits_answer_deltas(
+    session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.answer.generator import AnswerGenerator
+
+    async def fake_stream_generate(self, query, results):  # noqa: ANN001
+        for token in ("Billing ", "answer ", "stream"):
+            yield token
+
+    monkeypatch.setattr(AnswerGenerator, "stream_generate", fake_stream_generate)
+    service = _service(session)
+
+    events = await _collect_stream_events(
+        service,
+        query="billing refund",
+        answer_mode="llm",
+        raw_sources=[{"name": "note.txt", "content": "billing refund duplicate charge"}],
+    )
+
+    delta_events = [event for event in events if event.get("event") == "answer_delta"]
+    assert len(delta_events) == 3
+    done = events[-1]
+    assert done["event"] == "done"
+    assert done["answer"] == {
+        "markdown": "Billing answer stream",
+        "confidence": "low",
+    }

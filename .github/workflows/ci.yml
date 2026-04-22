@@ -32,6 +32,10 @@ jobs:
       - name: Tests
         run: uv run pytest
 
+      - name: Eval smoke
+        working-directory: .
+        run: make eval-smoke
+
       - name: Dependency audit
         run: uv run pip-audit || true
 

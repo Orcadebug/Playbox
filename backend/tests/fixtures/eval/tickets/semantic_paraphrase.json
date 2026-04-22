@@ -1,0 +1,811 @@
+{
+  "pack_id": "tickets_semantic_paraphrase",
+  "authorship": "ai-generated",
+  "cases": [
+    {
+      "id": "semantic_paraphrase_01",
+      "profiles": [
+        "regression",
+        "smoke",
+        "semantic"
+      ],
+      "query": "one time code loop",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-01-gold",
+          "source_name": "semantic-01.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "access portal challenge. Customer phrased the problem as one time code loop; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-01-distractor",
+          "source_name": "semantic-distractor-01.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "one reference: portal color preference only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-01-gold",
+          "must_include_text": "access portal challenge",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_02",
+      "profiles": [
+        "regression",
+        "smoke",
+        "semantic"
+      ],
+      "query": "workspace owner approval",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-02-gold",
+          "source_name": "semantic-02.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "team admin consent. Customer phrased the problem as workspace owner approval; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-02-distractor",
+          "source_name": "semantic-distractor-02.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "workspace reference: workspace banner update only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-02-gold",
+          "must_include_text": "team admin consent",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_03",
+      "profiles": [
+        "regression",
+        "smoke",
+        "semantic"
+      ],
+      "query": "profile photo crop",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-03-gold",
+          "source_name": "semantic-03.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "avatar image trim. Customer phrased the problem as profile photo crop; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-03-distractor",
+          "source_name": "semantic-distractor-03.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "profile reference: photo invoice archive only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-03-gold",
+          "must_include_text": "avatar image trim",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_04",
+      "profiles": [
+        "regression",
+        "smoke",
+        "semantic"
+      ],
+      "query": "address form province",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-04-gold",
+          "source_name": "semantic-04.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "region field validation. Customer phrased the problem as address form province; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-04-distractor",
+          "source_name": "semantic-distractor-04.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "address reference: address book export only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-04-gold",
+          "must_include_text": "region field validation",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_05",
+      "profiles": [
+        "regression",
+        "smoke",
+        "semantic"
+      ],
+      "query": "export missing columns",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-05-gold",
+          "source_name": "semantic-05.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "report field omission. Customer phrased the problem as export missing columns; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-05-distractor",
+          "source_name": "semantic-distractor-05.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "export reference: export font setting only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-05-gold",
+          "must_include_text": "report field omission",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_06",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "attachment preview blank",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-06-gold",
+          "source_name": "semantic-06.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "file viewer empty panel. Customer phrased the problem as attachment preview blank; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-06-distractor",
+          "source_name": "semantic-distractor-06.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "attachment reference: attachment naming policy only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-06-gold",
+          "must_include_text": "file viewer empty panel",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_07",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "calendar invite drift",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-07-gold",
+          "source_name": "semantic-07.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "schedule timezone shift. Customer phrased the problem as calendar invite drift; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-07-distractor",
+          "source_name": "semantic-distractor-07.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "calendar reference: calendar color theme only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-07-gold",
+          "must_include_text": "schedule timezone shift",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_08",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "role downgrade warning",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-08-gold",
+          "source_name": "semantic-08.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "permission level notice. Customer phrased the problem as role downgrade warning; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-08-distractor",
+          "source_name": "semantic-distractor-08.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "role reference: role icon placement only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-08-gold",
+          "must_include_text": "permission level notice",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_09",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "saved filter vanish",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-09-gold",
+          "source_name": "semantic-09.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "search view preset lost. Customer phrased the problem as saved filter vanish; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-09-distractor",
+          "source_name": "semantic-distractor-09.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "saved reference: filter label spelling only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-09-gold",
+          "must_include_text": "search view preset lost",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_10",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "keyboard focus trap",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-10-gold",
+          "source_name": "semantic-10.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "tab order loop. Customer phrased the problem as keyboard focus trap; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-10-distractor",
+          "source_name": "semantic-distractor-10.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "keyboard reference: keyboard shortcut list only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-10-gold",
+          "must_include_text": "tab order loop",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_11",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "mobile menu freeze",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-11-gold",
+          "source_name": "semantic-11.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "navigation drawer stall. Customer phrased the problem as mobile menu freeze; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-11-distractor",
+          "source_name": "semantic-distractor-11.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "mobile reference: mobile wallpaper choice only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-11-gold",
+          "must_include_text": "navigation drawer stall",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_12",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "language picker reset",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-12-gold",
+          "source_name": "semantic-12.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "locale selector rollback. Customer phrased the problem as language picker reset; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-12-distractor",
+          "source_name": "semantic-distractor-12.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "language reference: language course catalog only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-12-gold",
+          "must_include_text": "locale selector rollback",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_13",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "signature block overlap",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-13-gold",
+          "source_name": "semantic-13.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "footer signature collision. Customer phrased the problem as signature block overlap; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-13-distractor",
+          "source_name": "semantic-distractor-13.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "signature reference: signature font request only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-13-gold",
+          "must_include_text": "footer signature collision",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_14",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "coupon field hidden",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-14-gold",
+          "source_name": "semantic-14.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "promo entry concealed. Customer phrased the problem as coupon field hidden; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-14-distractor",
+          "source_name": "semantic-distractor-14.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "coupon reference: coupon booklet inventory only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-14-gold",
+          "must_include_text": "promo entry concealed",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_15",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "device handoff lost",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-15-gold",
+          "source_name": "semantic-15.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "session transfer gap. Customer phrased the problem as device handoff lost; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-15-distractor",
+          "source_name": "semantic-distractor-15.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "device reference: device warranty note only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-15-gold",
+          "must_include_text": "session transfer gap",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_16",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "bulk edit skipped",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-16-gold",
+          "source_name": "semantic-16.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "mass update omission. Customer phrased the problem as bulk edit skipped; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-16-distractor",
+          "source_name": "semantic-distractor-16.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "bulk reference: bulk packaging note only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-16-gold",
+          "must_include_text": "mass update omission",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_17",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "toast message stale",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-17-gold",
+          "source_name": "semantic-17.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "notification copy outdated. Customer phrased the problem as toast message stale; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-17-distractor",
+          "source_name": "semantic-distractor-17.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "toast reference: toast breakfast event only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-17-gold",
+          "must_include_text": "notification copy outdated",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_18",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "map pin offset",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-18-gold",
+          "source_name": "semantic-18.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "location marker displacement. Customer phrased the problem as map pin offset; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-18-distractor",
+          "source_name": "semantic-distractor-18.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "map reference: map legend color only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-18-gold",
+          "must_include_text": "location marker displacement",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_19",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "voice note silent",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-19-gold",
+          "source_name": "semantic-19.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "audio memo playback mute. Customer phrased the problem as voice note silent; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-19-distractor",
+          "source_name": "semantic-distractor-19.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "voice reference: voice actor credit only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-19-gold",
+          "must_include_text": "audio memo playback mute",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_20",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "scanner page split",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-20-gold",
+          "source_name": "semantic-20.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "document capture separation. Customer phrased the problem as scanner page split; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-20-distractor",
+          "source_name": "semantic-distractor-20.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "scanner reference: scanner cleaning reminder only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-20-gold",
+          "must_include_text": "document capture separation",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_21",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "team mention ghost",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-21-gold",
+          "source_name": "semantic-21.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "collaborator tag phantom. Customer phrased the problem as team mention ghost; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-21-distractor",
+          "source_name": "semantic-distractor-21.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "team reference: team lunch order only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-21-gold",
+          "must_include_text": "collaborator tag phantom",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_22",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "draft autosave gap",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-22-gold",
+          "source_name": "semantic-22.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "composition save lapse. Customer phrased the problem as draft autosave gap; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-22-distractor",
+          "source_name": "semantic-distractor-22.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "draft reference: draft folder icon only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-22-gold",
+          "must_include_text": "composition save lapse",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_23",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "chart legend swap",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-23-gold",
+          "source_name": "semantic-23.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "graph key inversion. Customer phrased the problem as chart legend swap; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-23-distractor",
+          "source_name": "semantic-distractor-23.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "chart reference: chart paper size only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-23-gold",
+          "must_include_text": "graph key inversion",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_24",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "approval badge absent",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-24-gold",
+          "source_name": "semantic-24.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "review status emblem missing. Customer phrased the problem as approval badge absent; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-24-distractor",
+          "source_name": "semantic-distractor-24.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "approval reference: badge shipping box only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-24-gold",
+          "must_include_text": "review status emblem missing",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "semantic_paraphrase_25",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "print margin creep",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "semantic-25-gold",
+          "source_name": "semantic-25.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "paper edge spacing drift. Customer phrased the problem as print margin creep; agent normalized it to this support concept. Internal priority is normal and the customer asks for a clear workaround."
+        },
+        {
+          "source_id": "semantic-25-distractor",
+          "source_name": "semantic-distractor-25.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "print reference: print queue ringtone only. This shares surface wording but describes a harmless preference."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "semantic-25-gold",
+          "must_include_text": "paper edge spacing drift",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    }
+  ]
+}

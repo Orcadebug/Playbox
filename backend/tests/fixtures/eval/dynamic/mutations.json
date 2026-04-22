@@ -1,0 +1,116 @@
+{
+  "pack_id": "dynamic_ticket_mutations",
+  "authorship": "ai-generated",
+  "baseline_documents": [
+    {
+      "id": "dyn-1",
+      "name": "dyn-1.txt",
+      "content": "alpha baseline marker is visible for the first customer note.",
+      "media_type": "text/plain",
+      "source_type": "ticket"
+    },
+    {
+      "id": "dyn-2",
+      "name": "dyn-2.txt",
+      "content": "beta baseline marker is visible for the second customer note.",
+      "media_type": "text/plain",
+      "source_type": "ticket"
+    }
+  ],
+  "steps": [
+    {
+      "op": "add",
+      "document": {
+        "id": "dyn-3",
+        "name": "dyn-3.txt",
+        "content": "gamma added marker appears immediately after the add step.",
+        "media_type": "text/plain",
+        "source_type": "ticket"
+      }
+    },
+    {
+      "op": "delete",
+      "source_id": "dyn-1"
+    },
+    {
+      "op": "mutate",
+      "source_id": "dyn-2",
+      "patch": "beta mutated marker moved to the front of the second customer note."
+    },
+    {
+      "op": "reorder",
+      "order": [
+        "dyn-3",
+        "dyn-2"
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "id": "baseline-alpha",
+      "after_step": 0,
+      "query": "alpha baseline marker",
+      "expected": [
+        {
+          "source_id": "dyn-1",
+          "must_include_text": "alpha baseline marker"
+        }
+      ]
+    },
+    {
+      "id": "added-gamma",
+      "after_step": 1,
+      "query": "gamma added marker",
+      "expected": [
+        {
+          "source_id": "dyn-3",
+          "must_include_text": "gamma added marker"
+        }
+      ]
+    },
+    {
+      "id": "deleted-alpha",
+      "after_step": 2,
+      "query": "alpha baseline marker",
+      "expected": [],
+      "disallowed_sources": [
+        "dyn-1"
+      ]
+    },
+    {
+      "id": "mutated-beta",
+      "after_step": 3,
+      "query": "beta mutated marker",
+      "expected": [
+        {
+          "source_id": "dyn-2",
+          "must_include_text": "beta mutated marker"
+        }
+      ]
+    },
+    {
+      "id": "reorder-beta",
+      "after_step": 4,
+      "query": "beta mutated marker",
+      "expected": [
+        {
+          "source_id": "dyn-2",
+          "must_include_text": "beta mutated marker"
+        }
+      ],
+      "assert_reorder_stable": true
+    },
+    {
+      "id": "reorder-gamma",
+      "after_step": 4,
+      "query": "gamma added marker",
+      "expected": [
+        {
+          "source_id": "dyn-3",
+          "must_include_text": "gamma added marker"
+        }
+      ],
+      "assert_reorder_stable": true
+    }
+  ]
+}

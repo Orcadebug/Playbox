@@ -1,6 +1,6 @@
 SHELL := /bin/zsh
 
-.PHONY: dev dev-local backend-dev frontend-dev test lint format install
+.PHONY: dev dev-local backend-dev frontend-dev test lint format install eval-smoke eval-regression
 
 dev:
 	docker compose -f docker-compose.dev.yml up --build
@@ -29,3 +29,8 @@ install:
 	cd backend && uv sync
 	cd frontend && npm install
 
+eval-smoke:
+	cd backend && uv run python scripts/run_retrieval_eval.py --profile smoke --semantic-mode deterministic
+
+eval-regression:
+	cd backend && uv run python scripts/run_retrieval_eval.py --profile regression --semantic-mode deterministic

@@ -1,0 +1,786 @@
+{
+  "pack_id": "tickets_phrase_lookups",
+  "authorship": "ai-generated",
+  "cases": [
+    {
+      "id": "phrase_lookup_01",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "blue comet receipt",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-01-gold",
+          "source_name": "phrase-01.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says blue comet receipt must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-01-noise",
+          "source_name": "phrase-noise-01.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats blue and receipt separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-01-gold",
+          "must_include_text": "blue comet receipt",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_02",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "silver gate approval",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-02-gold",
+          "source_name": "phrase-02.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says silver gate approval must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-02-noise",
+          "source_name": "phrase-noise-02.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats silver and approval separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-02-gold",
+          "must_include_text": "silver gate approval",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_03",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "north desk override",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-03-gold",
+          "source_name": "phrase-03.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says north desk override must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-03-noise",
+          "source_name": "phrase-noise-03.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats north and override separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-03-gold",
+          "must_include_text": "north desk override",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_04",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "quiet ledger marker",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-04-gold",
+          "source_name": "phrase-04.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says quiet ledger marker must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-04-noise",
+          "source_name": "phrase-noise-04.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats quiet and marker separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-04-gold",
+          "must_include_text": "quiet ledger marker",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_05",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "copper island queue",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-05-gold",
+          "source_name": "phrase-05.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says copper island queue must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-05-noise",
+          "source_name": "phrase-noise-05.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats copper and queue separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-05-gold",
+          "must_include_text": "copper island queue",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_06",
+      "profiles": [
+        "regression"
+      ],
+      "query": "red lantern handshake",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-06-gold",
+          "source_name": "phrase-06.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says red lantern handshake must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-06-noise",
+          "source_name": "phrase-noise-06.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats red and handshake separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-06-gold",
+          "must_include_text": "red lantern handshake",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_07",
+      "profiles": [
+        "regression"
+      ],
+      "query": "green shelf token",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-07-gold",
+          "source_name": "phrase-07.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says green shelf token must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-07-noise",
+          "source_name": "phrase-noise-07.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats green and token separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-07-gold",
+          "must_include_text": "green shelf token",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_08",
+      "profiles": [
+        "regression"
+      ],
+      "query": "orange river callback",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-08-gold",
+          "source_name": "phrase-08.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says orange river callback must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-08-noise",
+          "source_name": "phrase-noise-08.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats orange and callback separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-08-gold",
+          "must_include_text": "orange river callback",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_09",
+      "profiles": [
+        "regression"
+      ],
+      "query": "purple valley consent",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-09-gold",
+          "source_name": "phrase-09.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says purple valley consent must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-09-noise",
+          "source_name": "phrase-noise-09.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats purple and consent separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-09-gold",
+          "must_include_text": "purple valley consent",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_10",
+      "profiles": [
+        "regression"
+      ],
+      "query": "white harbor note",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-10-gold",
+          "source_name": "phrase-10.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says white harbor note must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-10-noise",
+          "source_name": "phrase-noise-10.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats white and note separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-10-gold",
+          "must_include_text": "white harbor note",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_11",
+      "profiles": [
+        "regression"
+      ],
+      "query": "amber bridge replay",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-11-gold",
+          "source_name": "phrase-11.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says amber bridge replay must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-11-noise",
+          "source_name": "phrase-noise-11.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats amber and replay separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-11-gold",
+          "must_include_text": "amber bridge replay",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_12",
+      "profiles": [
+        "regression"
+      ],
+      "query": "black summit memo",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-12-gold",
+          "source_name": "phrase-12.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says black summit memo must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-12-noise",
+          "source_name": "phrase-noise-12.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats black and memo separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-12-gold",
+          "must_include_text": "black summit memo",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_13",
+      "profiles": [
+        "regression"
+      ],
+      "query": "plain orchid receipt",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-13-gold",
+          "source_name": "phrase-13.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says plain orchid receipt must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-13-noise",
+          "source_name": "phrase-noise-13.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats plain and receipt separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-13-gold",
+          "must_include_text": "plain orchid receipt",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_14",
+      "profiles": [
+        "regression"
+      ],
+      "query": "clear meadow waiver",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-14-gold",
+          "source_name": "phrase-14.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says clear meadow waiver must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-14-noise",
+          "source_name": "phrase-noise-14.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats clear and waiver separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-14-gold",
+          "must_include_text": "clear meadow waiver",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_15",
+      "profiles": [
+        "regression"
+      ],
+      "query": "brisk canyon alert",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-15-gold",
+          "source_name": "phrase-15.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says brisk canyon alert must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-15-noise",
+          "source_name": "phrase-noise-15.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats brisk and alert separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-15-gold",
+          "must_include_text": "brisk canyon alert",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_16",
+      "profiles": [
+        "regression"
+      ],
+      "query": "urban pine review",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-16-gold",
+          "source_name": "phrase-16.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says urban pine review must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-16-noise",
+          "source_name": "phrase-noise-16.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats urban and review separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-16-gold",
+          "must_include_text": "urban pine review",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_17",
+      "profiles": [
+        "regression"
+      ],
+      "query": "soft pebble marker",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-17-gold",
+          "source_name": "phrase-17.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says soft pebble marker must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-17-noise",
+          "source_name": "phrase-noise-17.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats soft and marker separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-17-gold",
+          "must_include_text": "soft pebble marker",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_18",
+      "profiles": [
+        "regression"
+      ],
+      "query": "rapid willow flag",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-18-gold",
+          "source_name": "phrase-18.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says rapid willow flag must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-18-noise",
+          "source_name": "phrase-noise-18.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats rapid and flag separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-18-gold",
+          "must_include_text": "rapid willow flag",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_19",
+      "profiles": [
+        "regression"
+      ],
+      "query": "steady quartz packet",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-19-gold",
+          "source_name": "phrase-19.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says steady quartz packet must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-19-noise",
+          "source_name": "phrase-noise-19.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats steady and packet separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-19-gold",
+          "must_include_text": "steady quartz packet",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_20",
+      "profiles": [
+        "regression"
+      ],
+      "query": "hidden maple notice",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-20-gold",
+          "source_name": "phrase-20.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says hidden maple notice must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-20-noise",
+          "source_name": "phrase-noise-20.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats hidden and notice separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-20-gold",
+          "must_include_text": "hidden maple notice",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_21",
+      "profiles": [
+        "regression"
+      ],
+      "query": "frozen cedar trace",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-21-gold",
+          "source_name": "phrase-21.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says frozen cedar trace must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-21-noise",
+          "source_name": "phrase-noise-21.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats frozen and trace separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-21-gold",
+          "must_include_text": "frozen cedar trace",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_22",
+      "profiles": [
+        "regression"
+      ],
+      "query": "bright elm request",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-22-gold",
+          "source_name": "phrase-22.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says bright elm request must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-22-noise",
+          "source_name": "phrase-noise-22.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats bright and request separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-22-gold",
+          "must_include_text": "bright elm request",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_23",
+      "profiles": [
+        "regression"
+      ],
+      "query": "muted aspen signal",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-23-gold",
+          "source_name": "phrase-23.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says muted aspen signal must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-23-noise",
+          "source_name": "phrase-noise-23.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats muted and signal separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-23-gold",
+          "must_include_text": "muted aspen signal",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_24",
+      "profiles": [
+        "regression"
+      ],
+      "query": "clean fern token",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-24-gold",
+          "source_name": "phrase-24.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says clean fern token must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-24-noise",
+          "source_name": "phrase-noise-24.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats clean and token separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-24-gold",
+          "must_include_text": "clean fern token",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "phrase_lookup_25",
+      "profiles": [
+        "regression"
+      ],
+      "query": "level spruce docket",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "phrase-25-gold",
+          "source_name": "phrase-25.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "The support note says level spruce docket must remain visible in the customer timeline before closure."
+        },
+        {
+          "source_id": "phrase-25-noise",
+          "source_name": "phrase-noise-25.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "This unrelated note repeats level and docket separately while discussing office routing."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "phrase-25-gold",
+          "must_include_text": "level spruce docket",
+          "match_type": "exact"
+        }
+      ]
+    }
+  ]
+}

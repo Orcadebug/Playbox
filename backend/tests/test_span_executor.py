@@ -1,0 +1,262 @@
+from __future__ import annotations
+
+from app.parsers.base import ParserDetector, build_default_parser_registry
+from app.parsers.plaintext import PlainTextParser
+from app.retrieval.reranker import HeuristicReranker
+from app.retrieval.source_executor import build_source_windows_from_documents
+from app.retrieval.span_executor import SpanExecutor
+from app.retrieval.sparse_projection import DeterministicSemanticProjection, ProjectionConfig
+from app.schemas.search import SearchDocument
+
+
+def _executor() -> SpanExecutor:
+    detector = ParserDetector(
+        registry=build_default_parser_registry(),
+        default_parser=PlainTextParser(),
+    )
+    return SpanExecutor(
+        parser_detector=detector,
+        reranker=HeuristicReranker(),
+        projection=DeterministicSemanticProjection(ProjectionConfig(hash_features=64, dim=16)),
+    )
+
+
+def _isolated_executor(
+    *,
+    enabled_channels: tuple[str, ...],
+    rerank_enabled: bool = False,
+) -> SpanExecutor:
+    detector = ParserDetector(
+        registry=build_default_parser_registry(),
+        default_parser=PlainTextParser(),
+    )
+    return SpanExecutor(
+        parser_detector=detector,
+        reranker=HeuristicReranker(),
+        projection=DeterministicSemanticProjection(ProjectionConfig(hash_features=64, dim=16)),
+        enabled_channels=enabled_channels,
+        rerank_enabled=rerank_enabled,
+    )
+
+
+def test_span_executor_returns_exact_phase_results_with_channels() -> None:
+    executor = _executor()
+    documents = [
+        SearchDocument(
+            file_name="notes.txt",
+            content="Acme flagged a billing complaint after duplicate charges.",
+            media_type="text/plain",
+            metadata={"source_id": "raw-1", "source_origin": "raw", "source_type": "raw"},
+        )
+    ]
+
+    outcome = executor.execute(
+        query="billing complaint",
+        documents=documents,
+        top_k=3,
+    )
+
+    assert outcome.exact_results
+    top = outcome.exact_results[0]
+    assert top.metadata["phase"] == "exact"
+    assert "exact" in top.metadata["channels"]
+    assert top.channels == top.metadata["channels"]
+    assert top.channel_scores["exact"] > 0
+    assert top.primary_span is not None
+    assert top.primary_span["highlights"]
+    assert top.primary_span["offset_basis"] == "source"
+
+
+def test_span_executor_can_isolate_exact_channel_without_rerank() -> None:
+    executor = _isolated_executor(enabled_channels=("exact",), rerank_enabled=False)
+    documents = [
+        SearchDocument(
+            file_name="notes.txt",
+            content="Acme logged literal marker orchid relay for review.",
+            media_type="text/plain",
+            metadata={"source_id": "raw-1", "source_origin": "raw", "source_type": "raw"},
+        )
+    ]
+
+    outcome = executor.execute(query="orchid relay", documents=documents, top_k=3)
+
+    assert outcome.execution["active_channels"] == ["exact"]
+    assert outcome.execution["phase_counts"]["reranked_results"] == 0
+    assert outcome.final_results == outcome.proxy_results
+    assert "exact" in outcome.final_results[0].channels
+    assert "semantic" not in outcome.final_results[0].channels
+
+
+def test_span_executor_semantic_only_does_not_backfill_exact_highlights() -> None:
+    executor = _isolated_executor(enabled_channels=("semantic",), rerank_enabled=False)
+    documents = [
+        SearchDocument(
+            file_name="ticket.txt",
+            content="Customer wrote avatar crop issue; agent called it image trim.",
+            media_type="text/plain",
+            metadata={"source_id": "raw-semantic", "source_origin": "raw", "source_type": "raw"},
+        )
+    ]
+
+    outcome = executor.execute(query="avatar crop issue", documents=documents, top_k=3)
+
+    assert outcome.execution["active_channels"] == ["semantic"]
+    assert outcome.proxy_results
+    span = outcome.proxy_results[0].primary_span
+    assert span is not None
+    assert span["highlights"] == []
+    assert outcome.proxy_results[0].spans is None
+
+
+def test_span_executor_non_exact_candidates_use_context_span() -> None:
+    executor = _executor()
+    documents = [
+        SearchDocument(
+            file_name="issues.csv",
+            content=b"customer,issue\nAcme,shipping delay\nBeta,warehouse hold\n",
+            media_type="text/csv",
+            metadata={"source_id": "stored-1", "source_origin": "stored", "source_type": "upload"},
+        )
+    ]
+
+    outcome = executor.execute(
+        query="nonexistent phrase",
+        documents=documents,
+        top_k=2,
+    )
+
+    assert outcome.proxy_results
+    span = outcome.proxy_results[0].primary_span
+    assert span is not None
+    assert span["highlights"] == []
+    assert "structure" in outcome.proxy_results[0].metadata["channels"]
+
+
+def test_span_executor_semantic_fallback_finds_fresh_raw_without_projection() -> None:
+    executor = _executor()
+    documents = [
+        SearchDocument(
+            file_name="ticket.txt",
+            content="Customer was billed twice and asked support for help.",
+            media_type="text/plain",
+            metadata={"source_id": "raw-semantic", "source_origin": "raw", "source_type": "raw"},
+        )
+    ]
+
+    outcome = executor.execute(
+        query="duplicate charge",
+        documents=documents,
+        top_k=3,
+    )
+
+    assert outcome.proxy_results
+    top = outcome.proxy_results[0]
+    assert "semantic" in top.channels
+    assert top.channel_scores["semantic"] > 0
+    assert top.primary_span is not None
+    assert top.primary_span["highlights"] == []
+
+
+def test_span_offset_basis_is_source_for_plaintext_with_leading_space() -> None:
+    executor = _executor()
+    content = "  alpha line\n  Billing Complaint arrived"
+    documents = [
+        SearchDocument(
+            file_name="notes.txt",
+            content=content,
+            media_type="text/plain",
+            metadata={"source_id": "plain", "source_origin": "raw", "source_type": "raw"},
+        )
+    ]
+
+    outcome = executor.execute(query="billing complaint", documents=documents, top_k=1)
+
+    span = outcome.final_results[0].primary_span
+    assert span is not None
+    assert span["offset_basis"] == "source"
+    assert content[span["source_start"] : span["source_end"]] == "Billing Complaint"
+
+
+def test_transformed_parsers_mark_span_offsets_as_parsed() -> None:
+    executor = _executor()
+    documents = [
+        SearchDocument(
+            file_name="rows.csv",
+            content=b"customer,issue\nAcme,billing complaint\n",
+            media_type="text/csv",
+            metadata={"source_id": "csv", "source_origin": "raw", "source_type": "raw"},
+        ),
+        SearchDocument(
+            file_name="events.ndjson",
+            content=b'{"ticket":"A","issue":"billing complaint"}\n',
+            media_type="application/json",
+            metadata={"source_id": "ndjson", "source_origin": "raw", "source_type": "raw"},
+        ),
+        SearchDocument(
+            file_name="items.json",
+            content=b'[{"ticket":"B","issue":"billing complaint"}]',
+            media_type="application/json",
+            metadata={"source_id": "json", "source_origin": "raw", "source_type": "raw"},
+        ),
+    ]
+
+    outcome = executor.execute(query="billing complaint", documents=documents, top_k=5)
+    spans_by_source = {
+        result.metadata["source_id"]: result.primary_span for result in outcome.final_results
+    }
+
+    assert spans_by_source["csv"]["offset_basis"] == "parsed"
+    assert spans_by_source["ndjson"]["offset_basis"] == "parsed"
+    assert spans_by_source["json"]["offset_basis"] == "parsed"
+    for result in outcome.final_results:
+        span = result.primary_span
+        assert span is not None
+        assert (
+            result.content[span["source_start"] : span["source_end"]].lower() == "billing complaint"
+        )
+
+
+def test_span_executor_respects_rerank_budget_and_partial_flags() -> None:
+    executor = _executor()
+    documents = [
+        SearchDocument(
+            file_name=f"note-{idx}.txt",
+            content=f"Document {idx} has billing issue and refund workflow details",
+            media_type="text/plain",
+            metadata={
+                "source_id": f"src-{idx}",
+                "source_origin": "stored",
+                "source_type": "upload",
+            },
+        )
+        for idx in range(1_500)
+    ]
+
+    outcome = executor.execute(
+        query="billing issue",
+        documents=documents,
+        top_k=5,
+        cacheable=True,
+    )
+
+    assert outcome.execution["shortlisted_candidates"] <= outcome.execution["rerank_limit"]
+    assert len(outcome.reranked_results) <= 5
+    assert outcome.execution["partial"] is True
+    assert outcome.execution["window_count"] >= outcome.execution["scanned_windows"]
+    assert outcome.final_results[0].metadata["retrieval_partial"] is True
+    assert outcome.final_results[0].metadata["completion_reason"] == "partial_scan_limit"
+
+
+def test_source_windows_keep_neighbor_ids_for_span_expansion() -> None:
+    documents = [
+        SearchDocument(
+            file_name="plain.txt",
+            content="line one\nline two\nline three",
+            media_type="text/plain",
+            metadata={"source_id": "plain-1", "source_origin": "raw", "source_type": "raw"},
+        )
+    ]
+
+    windows = build_source_windows_from_documents(documents)
+    assert len(windows) == 3
+    assert windows[1].neighboring_window_ids == [windows[0].window_id, windows[2].window_id]

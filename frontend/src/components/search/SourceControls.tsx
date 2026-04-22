@@ -67,7 +67,7 @@ export function SourceControls({
             value={rawSourceContent}
             disabled={disabled}
             onChange={(event) => onRawSourceContentChange(event.target.value)}
-            placeholder="Paste raw notes, logs, rows, or extracted text"
+            placeholder='Paste raw notes, logs, rows, or JSON like {"ticket":"A","issue":"billed twice"}'
             rows={6}
             className="mt-3 min-h-36 w-full resize-y rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-[rgb(var(--muted))] focus:border-cyan-300/40"
           />
@@ -98,7 +98,7 @@ export function SourceControls({
             value={webhookContent}
             disabled={disabled || !webhookEnabled}
             onChange={(event) => onWebhookContentChange(event.target.value)}
-            placeholder="Paste connector document text"
+            placeholder='Paste live connector text or JSON like [{"id":7,"status":"timeout"}]'
             rows={6}
             className="mt-3 min-h-36 w-full resize-y rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-[rgb(var(--muted))] focus:border-cyan-300/40 disabled:opacity-50"
           />

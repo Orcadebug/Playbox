@@ -1,0 +1,28 @@
+{
+  "pack_id": "pdf_coverage",
+  "cases": [
+    {
+      "id": "pdf_page_coverage_chargeback",
+      "profiles": ["regression"],
+      "query": "chargeback evidence order 44",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "pdf-1",
+          "source_name": "report.pdf",
+          "source_origin": "raw",
+          "source_type": "pdf",
+          "media_type": "application/pdf",
+          "content": "Page one summary\\fPage two includes chargeback evidence for order 44 and ledger notes"
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "pdf-1",
+          "must_include_text": "chargeback evidence",
+          "match_type": "exact"
+        }
+      ]
+    }
+  ]
+}

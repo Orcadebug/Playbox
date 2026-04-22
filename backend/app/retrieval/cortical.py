@@ -10,7 +10,11 @@ from app.retrieval.bm25 import BM25ScoredChunk
 from app.retrieval.diffusion import DiffusionConfig, diffuse
 from app.retrieval.gating import thalamic_gate
 from app.retrieval.query_patterns import build_query_patterns
-from app.retrieval.sparse_projection import NullProjection, SparseProjection
+from app.retrieval.sparse_projection import (
+    DeterministicSemanticProjection,
+    NullProjection,
+    SparseProjection,
+)
 from app.retrieval.trie import QueryTrie
 from app.schemas.documents import Chunk
 
@@ -54,7 +58,7 @@ def default_trie_builder(
 
 @dataclass(slots=True)
 class CorticalRetriever:
-    projection: SparseProjection | NullProjection
+    projection: SparseProjection | DeterministicSemanticProjection | NullProjection
     trie_builder: Callable[[str], QueryTrie] = field(default_factory=default_trie_builder)
     gating_m: int = 80
     lambdas: tuple[float, float, float, float] = (0.35, 0.35, 0.20, 0.10)

@@ -1,0 +1,57 @@
+{
+  "pack_id": "logs",
+  "cases": [
+    {
+      "id": "logs_exact_trace_timeout",
+      "profiles": ["smoke", "regression", "latency"],
+      "query": "trace id 9f2a timeout",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "log-91",
+          "source_name": "billing.log",
+          "source_origin": "raw",
+          "source_type": "log",
+          "content": "info startup complete\nwarn cache warmup slow\nerror trace_id=9f2a timeout contacting ledger\ninfo retry queued"
+        },
+        {
+          "source_id": "log-92",
+          "source_name": "worker.log",
+          "source_origin": "raw",
+          "source_type": "log",
+          "content": "info worker started\ninfo queue depth stable"
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "log-91",
+          "must_include_text": "trace_id=9f2a",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "logs_partial_tail_miss",
+      "profiles": ["latency"],
+      "query": "fatal timeout marker 9f2",
+      "top_k": 5,
+      "generated_lines": {
+        "source_id": "log-large",
+        "source_name": "large.log",
+        "source_origin": "raw",
+        "source_type": "log",
+        "line_count": 1500,
+        "target_line": 1405,
+        "target_text": "fatal timeout marker 9f2",
+        "noise_prefix": "heartbeat"
+      },
+      "expected": [
+        {
+          "source_id": "log-large",
+          "must_include_text": "fatal timeout marker 9f2",
+          "match_type": "exact"
+        }
+      ]
+    }
+  ]
+}

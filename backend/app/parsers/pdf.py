@@ -22,11 +22,13 @@ class PDFParser(BaseParser):
                 ParsedDocument(
                     content=page_text,
                     source_name=file_name,
-                    metadata={"page_number": page_number},
+                    metadata={"page_number": page_number, "offset_basis": "parsed"},
                     location=SourceLocation(page_number=page_number),
                 )
             )
-        return ParsedFile(file_name=file_name, documents=documents, parser_name=self.name, media_type=media_type)
+        return ParsedFile(
+            file_name=file_name, documents=documents, parser_name=self.name, media_type=media_type
+        )
 
     def _extract_with_pymupdf(self, raw: bytes) -> str:
         try:

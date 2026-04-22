@@ -18,7 +18,7 @@ from app.retrieval.query_patterns import build_query_patterns
 from app.retrieval.reranker import AutoReranker, HeuristicReranker
 from app.retrieval.retriever import Bm25Retriever
 from app.retrieval.sparse_projection import (
-    NullProjection,
+    DeterministicSemanticProjection,
     ProjectionConfig,
     SparseProjection,
     load_projection,
@@ -247,10 +247,25 @@ def test_projection_loads_or_falls_back(tmp_path) -> None:
     config = ProjectionConfig(hash_features=16, dim=4)
     projection = load_projection(tmp_path / "missing.npz", config)
 
-    assert isinstance(projection, NullProjection)
+    assert isinstance(projection, DeterministicSemanticProjection)
     chunk_vecs = projection.encode_chunks([_single_chunk("billing refund")])
     scores = projection.score(projection.encode_query("billing"), chunk_vecs)
-    assert scores.tolist() == [0.0]
+    assert scores[0] > 0.0
+
+
+def test_deterministic_projection_matches_basic_aliases(tmp_path) -> None:
+    projection = load_projection(
+        tmp_path / "missing.npz",
+        ProjectionConfig(hash_features=64, dim=32),
+    )
+
+    query_vec = projection.encode_query("duplicate charge")
+    chunk_vecs = projection.encode_chunks(
+        [_single_chunk("customer billed twice"), _single_chunk("shipping delay")]
+    )
+    scores = projection.score(query_vec, chunk_vecs)
+
+    assert scores[0] > scores[1]
 
 
 def test_projection_cosine_shape(tmp_path) -> None:
@@ -308,6 +323,20 @@ def test_bm25_cache_returns_same_index() -> None:
     idx1 = cache.get_or_build("ws1", chunks)
     idx2 = cache.get_or_build("ws1", chunks)
     assert idx1 is idx2, "Same content hash should return cached instance"
+
+
+def test_bm25_cache_snapshot_is_stable_and_thread_safe() -> None:
+    cache = BM25IndexCache(ttl=60.0, max_entries=5)
+    chunks = _make_chunks(3)
+
+    assert cache.snapshot() == {}
+    cache.get_or_build("ws1", chunks)
+    first = cache.snapshot()
+    second = cache.snapshot()
+
+    assert first == second
+    assert first["ws1"]["chunk_count"] == len(chunks)
+    assert "content_hash" in first["ws1"]
 
 
 def test_bm25_cache_invalidates_on_content_change() -> None:

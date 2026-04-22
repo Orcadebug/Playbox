@@ -1,0 +1,56 @@
+{
+  "pack_id": "multilingual",
+  "cases": [
+    {
+      "id": "multilingual_exact_span",
+      "profiles": ["regression"],
+      "query": "reembolso inmediato",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "es-1",
+          "source_name": "ticket-es.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "Cliente solicita reembolso inmediato por cobro duplicado."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "es-1",
+          "must_include_text": "reembolso inmediato",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "multilingual_semantic_bridge",
+      "profiles": ["regression", "semantic"],
+      "query": "refund request from mexico customer",
+      "top_k": 3,
+      "documents": [
+        {
+          "source_id": "es-2",
+          "source_name": "ticket-es-2.txt",
+          "source_origin": "connector",
+          "source_type": "ticket",
+          "content": "Cliente de Mexico solicita reembolso por factura duplicada."
+        },
+        {
+          "source_id": "es-3",
+          "source_name": "ticket-es-3.txt",
+          "source_origin": "connector",
+          "source_type": "ticket",
+          "content": "Cliente pregunta por horario de soporte."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "es-2",
+          "must_include_text": "reembolso",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    }
+  ]
+}

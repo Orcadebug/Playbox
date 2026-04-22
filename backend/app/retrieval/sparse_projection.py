@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import re
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -14,6 +16,60 @@ from sklearn.feature_extraction.text import HashingVectorizer
 from app.schemas.documents import Chunk
 
 _log = logging.getLogger(__name__)
+_TOKEN_RE = re.compile(r"\w+", flags=re.UNICODE)
+
+_ALIASES: dict[str, str] = {
+    "billed": "charge",
+    "billing": "charge",
+    "charged": "charge",
+    "charges": "charge",
+    "charge": "charge",
+    "payment": "charge",
+    "payments": "charge",
+    "invoice": "invoice",
+    "invoices": "invoice",
+    "factura": "invoice",
+    "duplicate": "duplicate",
+    "duplicated": "duplicate",
+    "duplicada": "duplicate",
+    "double": "duplicate",
+    "twice": "duplicate",
+    "refund": "refund",
+    "refunded": "refund",
+    "reembolso": "refund",
+    "chargeback": "refund",
+    "failure": "failure",
+    "failed": "failure",
+    "failing": "failure",
+    "declined": "failure",
+    "denied": "failure",
+    "error": "failure",
+    "timeout": "timeout",
+    "timeouts": "timeout",
+    "timed": "timeout",
+    "latency": "timeout",
+    "slow": "timeout",
+    "503": "timeout",
+    "ticket": "ticket",
+    "tickets": "ticket",
+    "incidente": "ticket",
+    "issue": "ticket",
+    "issues": "ticket",
+    "complaint": "complaint",
+    "complaints": "complaint",
+    "complained": "complaint",
+    "customer": "customer",
+    "client": "customer",
+    "cliente": "customer",
+    "account": "customer",
+    "launch": "launch",
+    "release": "launch",
+    "blocker": "blocker",
+    "blocked": "blocker",
+    "risk": "risk",
+    "risky": "risk",
+    "churn": "churn",
+}
 
 
 @dataclass(slots=True)
@@ -30,6 +86,15 @@ def _normalize_rows(values: np.ndarray) -> np.ndarray:
         return values / norm if norm > 0 else values
     norms = np.linalg.norm(values, axis=1, keepdims=True)
     return np.divide(values, norms, out=np.zeros_like(values), where=norms > 0)
+
+
+def _canonical_tokens(text: str) -> list[str]:
+    return [_ALIASES.get(token, token) for token in _TOKEN_RE.findall(text.lower())]
+
+
+def _stable_index(token: str, dim: int) -> int:
+    digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, byteorder="big", signed=False) % dim
 
 
 def _config_from_json(raw: Any) -> ProjectionConfig:
@@ -145,6 +210,51 @@ class SparseProjection:
 
 
 @dataclass(slots=True)
+class DeterministicSemanticProjection:
+    """Always-available semantic scorer for fresh sources.
+
+    It is deliberately lightweight: canonical token aliases plus stable hashed
+    unigrams/bigrams. A learned projection can improve quality, but this keeps
+    semantic recall from depending on a setup step.
+    """
+
+    config: ProjectionConfig = field(default_factory=ProjectionConfig)
+
+    def encode_query(self, query: str) -> np.ndarray:
+        return self._embed(query)
+
+    def encode_chunks(self, chunks: Sequence[Chunk]) -> np.ndarray:
+        if not chunks:
+            return np.zeros((0, self.config.dim), dtype=np.float32)
+        return np.vstack([self._embed(chunk.text) for chunk in chunks])
+
+    def score(self, query_vec: np.ndarray, chunk_vecs: np.ndarray) -> np.ndarray:
+        if len(chunk_vecs) == 0:
+            return np.zeros(0, dtype=np.float32)
+        scores = chunk_vecs @ query_vec
+        return np.maximum(scores.astype(np.float32), 0.0)
+
+    def _embed(self, text: str) -> np.ndarray:
+        vector = np.zeros(self.config.dim, dtype=np.float32)
+        tokens = _canonical_tokens(text)
+        if not tokens:
+            return vector
+
+        features: list[tuple[str, float]] = [(token, 1.0) for token in tokens]
+        features.extend(
+            (f"{left} {right}", 1.35) for left, right in zip(tokens, tokens[1:], strict=False)
+        )
+        # Unique concepts matter more than repeated noise in messy logs/payloads.
+        seen: set[str] = set()
+        for feature, weight in features:
+            if feature in seen:
+                continue
+            seen.add(feature)
+            vector[_stable_index(feature, self.config.dim)] += weight
+        return _normalize_rows(vector)
+
+
+@dataclass(slots=True)
 class NullProjection:
     config: ProjectionConfig = field(default_factory=ProjectionConfig)
 
@@ -161,20 +271,24 @@ class NullProjection:
 def load_projection(
     path: Path | None,
     config: ProjectionConfig | None = None,
-) -> SparseProjection | NullProjection:
+) -> SparseProjection | DeterministicSemanticProjection:
     fallback_config = config or ProjectionConfig()
     if path is None:
-        _log.warning("Projection model path is not configured; semantic projection disabled")
-        return NullProjection(fallback_config)
+        _log.warning(
+            "Projection model path is not configured; using deterministic semantic projection"
+        )
+        return DeterministicSemanticProjection(fallback_config)
     try:
         return SparseProjection.load(path)
     except FileNotFoundError:
-        _log.warning("Projection model not found at %s; semantic projection disabled", path)
-        return NullProjection(fallback_config)
+        _log.warning(
+            "Projection model not found at %s; using deterministic semantic projection", path
+        )
+        return DeterministicSemanticProjection(fallback_config)
     except Exception as exc:
         _log.warning(
-            "Failed to load projection model at %s: %s; semantic projection disabled",
+            "Failed to load projection model at %s: %s; using deterministic semantic projection",
             path,
             exc,
         )
-        return NullProjection(fallback_config)
+        return DeterministicSemanticProjection(fallback_config)
