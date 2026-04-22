@@ -66,6 +66,33 @@ This repository contains a runnable MVP for:
 - LLM answer generation exists under `backend/app/answer` and is only called when
   `answer_mode` is `"llm"`.
 
+## Ticket promise eval
+
+The promise eval checks Waver's raw-source contract directly: fresh support-ticket
+sources should return exact spans plus semantically relevant spans quickly, without
+pre-ingestion or corpus-specific vector indexing. The new eval fixtures live under
+`backend/tests/fixtures/eval/`, separate from the older retrieval eval fixtures.
+
+- Static corpus: `backend/tests/fixtures/eval/tickets/*.json` contains 150
+  AI-authored support-ticket cases across exact lookups, phrase lookups, semantic
+  paraphrases, mixed exact/semantic queries, freshness cases, and negatives.
+- Dynamic corpus: `backend/tests/fixtures/eval/dynamic/mutations.json` covers
+  immediate add, delete, mutate, and reorder behavior against transient raw sources.
+- Layer runners isolate exact, semantic proxy, reranking, and planner behavior through
+  `backend/app/retrieval/eval_layers.py`.
+- The cold-corpus gate verifies raw eval runs do not warm or depend on BM25 caches or
+  projection model writes.
+
+Run the promise eval from `backend/`:
+
+```bash
+uv run python -m scripts.run_vision_eval --profile smoke --cold-gate
+uv run python -m scripts.run_vision_eval --layer exact_only
+uv run python -m scripts.run_vision_eval --layer semantic_only
+uv run python -m scripts.run_vision_eval --dynamic dynamic/mutations.json
+uv run pytest tests/test_eval_layers.py tests/test_eval_dynamic.py -v
+```
+
 ## Search request example
 
 ```json
