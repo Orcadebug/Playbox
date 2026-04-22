@@ -109,6 +109,20 @@ class BM25IndexCache:
             self._cache.clear()
             self._access_order.clear()
 
+    def snapshot(self) -> dict[str, dict[str, object]]:
+        """Return a stable, thread-safe view of cache entries for eval assertions."""
+        with self._lock:
+            return {
+                workspace_id: {
+                    "content_hash": entry.content_hash,
+                    "chunk_count": len(entry.index.chunks),
+                    "access_position": self._access_order.index(workspace_id)
+                    if workspace_id in self._access_order
+                    else -1,
+                }
+                for workspace_id, entry in sorted(self._cache.items())
+            }
+
     # --- internals (must be called with lock held) ---
 
     def _touch(self, workspace_id: str) -> None:

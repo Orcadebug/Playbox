@@ -1,0 +1,711 @@
+{
+  "pack_id": "tickets_negatives",
+  "authorship": "ai-generated",
+  "cases": [
+    {
+      "id": "negative_01",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "null scenario 01 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-01-safe",
+          "source_name": "negative-safe-01.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 01 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-01-disallowed",
+          "source_name": "negative-disallowed-01.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 01 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-01-disallowed"
+      ]
+    },
+    {
+      "id": "negative_02",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "null scenario 02 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-02-safe",
+          "source_name": "negative-safe-02.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 02 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-02-disallowed",
+          "source_name": "negative-disallowed-02.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 02 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-02-disallowed"
+      ]
+    },
+    {
+      "id": "negative_03",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "null scenario 03 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-03-safe",
+          "source_name": "negative-safe-03.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 03 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-03-disallowed",
+          "source_name": "negative-disallowed-03.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 03 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-03-disallowed"
+      ]
+    },
+    {
+      "id": "negative_04",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "null scenario 04 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-04-safe",
+          "source_name": "negative-safe-04.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 04 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-04-disallowed",
+          "source_name": "negative-disallowed-04.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 04 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-04-disallowed"
+      ]
+    },
+    {
+      "id": "negative_05",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "null scenario 05 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-05-safe",
+          "source_name": "negative-safe-05.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 05 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-05-disallowed",
+          "source_name": "negative-disallowed-05.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 05 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-05-disallowed"
+      ]
+    },
+    {
+      "id": "negative_06",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 06 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-06-safe",
+          "source_name": "negative-safe-06.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 06 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-06-disallowed",
+          "source_name": "negative-disallowed-06.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 06 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-06-disallowed"
+      ]
+    },
+    {
+      "id": "negative_07",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 07 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-07-safe",
+          "source_name": "negative-safe-07.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 07 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-07-disallowed",
+          "source_name": "negative-disallowed-07.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 07 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-07-disallowed"
+      ]
+    },
+    {
+      "id": "negative_08",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 08 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-08-safe",
+          "source_name": "negative-safe-08.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 08 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-08-disallowed",
+          "source_name": "negative-disallowed-08.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 08 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-08-disallowed"
+      ]
+    },
+    {
+      "id": "negative_09",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 09 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-09-safe",
+          "source_name": "negative-safe-09.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 09 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-09-disallowed",
+          "source_name": "negative-disallowed-09.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 09 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-09-disallowed"
+      ]
+    },
+    {
+      "id": "negative_10",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 10 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-10-safe",
+          "source_name": "negative-safe-10.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 10 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-10-disallowed",
+          "source_name": "negative-disallowed-10.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 10 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-10-disallowed"
+      ]
+    },
+    {
+      "id": "negative_11",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 11 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-11-safe",
+          "source_name": "negative-safe-11.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 11 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-11-disallowed",
+          "source_name": "negative-disallowed-11.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 11 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-11-disallowed"
+      ]
+    },
+    {
+      "id": "negative_12",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 12 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-12-safe",
+          "source_name": "negative-safe-12.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 12 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-12-disallowed",
+          "source_name": "negative-disallowed-12.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 12 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-12-disallowed"
+      ]
+    },
+    {
+      "id": "negative_13",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 13 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-13-safe",
+          "source_name": "negative-safe-13.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 13 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-13-disallowed",
+          "source_name": "negative-disallowed-13.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 13 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-13-disallowed"
+      ]
+    },
+    {
+      "id": "negative_14",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 14 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-14-safe",
+          "source_name": "negative-safe-14.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 14 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-14-disallowed",
+          "source_name": "negative-disallowed-14.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 14 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-14-disallowed"
+      ]
+    },
+    {
+      "id": "negative_15",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 15 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-15-safe",
+          "source_name": "negative-safe-15.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 15 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-15-disallowed",
+          "source_name": "negative-disallowed-15.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 15 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-15-disallowed"
+      ]
+    },
+    {
+      "id": "negative_16",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 16 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-16-safe",
+          "source_name": "negative-safe-16.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 16 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-16-disallowed",
+          "source_name": "negative-disallowed-16.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 16 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-16-disallowed"
+      ]
+    },
+    {
+      "id": "negative_17",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 17 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-17-safe",
+          "source_name": "negative-safe-17.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 17 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-17-disallowed",
+          "source_name": "negative-disallowed-17.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 17 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-17-disallowed"
+      ]
+    },
+    {
+      "id": "negative_18",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 18 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-18-safe",
+          "source_name": "negative-safe-18.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 18 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-18-disallowed",
+          "source_name": "negative-disallowed-18.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 18 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-18-disallowed"
+      ]
+    },
+    {
+      "id": "negative_19",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 19 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-19-safe",
+          "source_name": "negative-safe-19.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 19 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-19-disallowed",
+          "source_name": "negative-disallowed-19.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 19 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-19-disallowed"
+      ]
+    },
+    {
+      "id": "negative_20",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 20 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-20-safe",
+          "source_name": "negative-safe-20.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 20 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-20-disallowed",
+          "source_name": "negative-disallowed-20.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 20 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-20-disallowed"
+      ]
+    },
+    {
+      "id": "negative_21",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 21 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-21-safe",
+          "source_name": "negative-safe-21.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 21 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-21-disallowed",
+          "source_name": "negative-disallowed-21.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 21 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-21-disallowed"
+      ]
+    },
+    {
+      "id": "negative_22",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 22 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-22-safe",
+          "source_name": "negative-safe-22.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 22 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-22-disallowed",
+          "source_name": "negative-disallowed-22.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 22 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-22-disallowed"
+      ]
+    },
+    {
+      "id": "negative_23",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 23 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-23-safe",
+          "source_name": "negative-safe-23.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 23 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-23-disallowed",
+          "source_name": "negative-disallowed-23.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 23 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-23-disallowed"
+      ]
+    },
+    {
+      "id": "negative_24",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 24 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-24-safe",
+          "source_name": "negative-safe-24.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 24 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-24-disallowed",
+          "source_name": "negative-disallowed-24.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 24 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-24-disallowed"
+      ]
+    },
+    {
+      "id": "negative_25",
+      "profiles": [
+        "regression"
+      ],
+      "query": "null scenario 25 harmless status",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "negative-25-safe",
+          "source_name": "negative-safe-25.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null scenario 25 harmless status is a synthetic control note used only to absorb an irrelevant query."
+        },
+        {
+          "source_id": "negative-25-disallowed",
+          "source_name": "negative-disallowed-25.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "null reference 25 mentions a different customer preference and must not be selected."
+        }
+      ],
+      "expected": [],
+      "disallowed_sources": [
+        "negative-25-disallowed"
+      ]
+    }
+  ]
+}

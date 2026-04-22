@@ -17,7 +17,12 @@ from app.parsers.base import ParserDetector, build_default_parser_registry
 from app.parsers.plaintext import PlainTextParser
 from app.retrieval.reranker import HeuristicReranker
 from app.retrieval.span_executor import SpanExecutor
-from app.retrieval.sparse_projection import NullProjection, ProjectionConfig, load_projection
+from app.retrieval.sparse_projection import (
+    NullProjection,
+    ProjectionConfig,
+    SparseProjection,
+    load_projection,
+)
 from app.schemas.documents import Chunk
 from app.schemas.search import SearchDocument, SearchResult
 
@@ -128,6 +133,8 @@ class EvalRunConfig:
     gate_thresholds_min: dict[str, float] = field(default_factory=dict)
     gate_thresholds_max: dict[str, float] = field(default_factory=dict)
     gate_metrics: bool = True
+    cold_gate: bool = False
+    bm25_cache: Any | None = None
 
 
 @dataclass(slots=True)
@@ -136,10 +143,17 @@ class EvalCaseScore:
     source_recall: float
     span_recall: float
     primary_span_accuracy: float
+    top_1_span_accuracy: float
+    span_recall_at_5: float
     exact_highlight_rate: float
+    exact_hit_precision: float
     semantic_context_success: float
+    semantic_hit_recall: float
     partial_miss_rate: float
+    misleading_partial_rate: float
     time_to_result_ms: float
+    time_to_first_useful_ms: float
+    time_to_final_ms: float
     windows_scanned: int
     window_count: int
     candidate_count: int
@@ -148,6 +162,7 @@ class EvalCaseScore:
     missing_sources: list[str] = field(default_factory=list)
     missing_spans: list[str] = field(default_factory=list)
     disallowed_hits: list[str] = field(default_factory=list)
+    cold_gate_failures: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -170,6 +185,77 @@ class EvalScorecard:
         if self.status == "failed":
             return 2
         return 0
+
+
+@dataclass(slots=True)
+class _ColdCorpusSnapshot:
+    cache: dict[str, dict[str, object]] | None
+    projection_files: dict[str, tuple[int, int]]
+
+
+class ColdCorpusGate:
+    """Assertions that fresh-source evals did not depend on persisted corpus state."""
+
+    def __init__(
+        self,
+        *,
+        bm25_cache: Any | None = None,
+        projection_model_path: Path | None = None,
+    ) -> None:
+        self.bm25_cache = bm25_cache
+        self.projection_model_path = projection_model_path
+
+    @classmethod
+    def from_settings(cls, *, bm25_cache: Any | None = None) -> ColdCorpusGate:
+        settings = get_settings()
+        return cls(
+            bm25_cache=bm25_cache,
+            projection_model_path=settings.projection_model_path,
+        )
+
+    def snapshot(self) -> _ColdCorpusSnapshot:
+        cache_snapshot = None
+        if self.bm25_cache is not None and hasattr(self.bm25_cache, "snapshot"):
+            cache_snapshot = self.bm25_cache.snapshot()
+        return _ColdCorpusSnapshot(
+            cache=cache_snapshot,
+            projection_files=self._projection_snapshot(),
+        )
+
+    def failures(
+        self,
+        before: _ColdCorpusSnapshot,
+        *,
+        cacheable: bool,
+        execution: dict[str, Any],
+    ) -> list[str]:
+        failures: list[str] = []
+        if cacheable:
+            failures.append("cold corpus run was invoked with cacheable=True")
+        if bool(execution.get("use_cache")):
+            failures.append("cold corpus run planned use_cache=True")
+
+        after = self.snapshot()
+        if before.cache is not None and after.cache != before.cache:
+            failures.append("BM25 cache snapshot changed during cold corpus run")
+        if after.projection_files != before.projection_files:
+            failures.append("projection model path changed during cold corpus run")
+        return failures
+
+    def _projection_snapshot(self) -> dict[str, tuple[int, int]]:
+        path = self.projection_model_path
+        if path is None or not path.exists():
+            return {}
+        files = (
+            [path]
+            if path.is_file()
+            else sorted(item for item in path.rglob("*") if item.is_file())
+        )
+        snapshot: dict[str, tuple[int, int]] = {}
+        for item in files:
+            stat = item.stat()
+            snapshot[str(item)] = (stat.st_size, stat.st_mtime_ns)
+        return snapshot
 
 
 class DeterministicEvalProjection:
@@ -252,12 +338,16 @@ _PROFILE_DEFAULTS: dict[ProfileName, dict[str, Any]] = {
         "min": {
             "source_recall_at_k": 0.90,
             "span_recall_at_k": 0.80,
+            "span_recall_at_5": 0.80,
             "primary_span_accuracy": 0.65,
+            "top_1_span_accuracy": 0.60,
             "exact_highlight_rate": 0.70,
             "semantic_context_success_rate": 0.60,
         },
         "max": {
             "partial_miss_rate": 0.60,
+            "misleading_partial_rate": 0.0,
+            "persistence_dependence_ratio": 1.1,
             "time_to_result_ms_p95": 1800.0,
         },
     },
@@ -267,12 +357,16 @@ _PROFILE_DEFAULTS: dict[ProfileName, dict[str, Any]] = {
         "min": {
             "source_recall_at_k": 0.85,
             "span_recall_at_k": 0.75,
+            "span_recall_at_5": 0.75,
             "primary_span_accuracy": 0.60,
+            "top_1_span_accuracy": 0.55,
             "exact_highlight_rate": 0.65,
             "semantic_context_success_rate": 0.55,
         },
         "max": {
             "partial_miss_rate": 0.70,
+            "misleading_partial_rate": 0.0,
+            "persistence_dependence_ratio": 1.1,
         },
     },
     "latency": {
@@ -287,9 +381,12 @@ _PROFILE_DEFAULTS: dict[ProfileName, dict[str, Any]] = {
         "min": {
             "source_recall_at_k": 0.75,
             "span_recall_at_k": 0.60,
+            "span_recall_at_5": 0.60,
             "semantic_context_success_rate": 0.75,
         },
-        "max": {},
+        "max": {
+            "persistence_dependence_ratio": 1.1,
+        },
     },
 }
 
@@ -300,6 +397,8 @@ def build_run_config(
     *,
     semantic_mode: SemanticMode | None = None,
     top_k_override: int | None = None,
+    cold_gate: bool = False,
+    bm25_cache: Any | None = None,
 ) -> EvalRunConfig:
     defaults = _PROFILE_DEFAULTS[profile]
     selected_mode = semantic_mode or defaults["semantic_mode"]
@@ -311,6 +410,8 @@ def build_run_config(
         gate_thresholds_min=dict(defaults["min"]),
         gate_thresholds_max=dict(defaults["max"]),
         gate_metrics=bool(defaults["gate_metrics"]),
+        cold_gate=cold_gate,
+        bm25_cache=bm25_cache,
     )
 
 
@@ -355,6 +456,21 @@ def _resolve_projection(mode: SemanticMode) -> tuple[Any, str | None]:
         hash_features=settings.projection_hash_features,
         dim=settings.projection_dim,
     )
+    if mode == "real":
+        path = settings.projection_model_path
+        if path is None or not path.exists():
+            return (
+                NullProjection(config),
+                f"Semantic projection unavailable at {path}",
+            )
+        projection = load_projection(path, config)
+        if not isinstance(projection, SparseProjection):
+            return (
+                NullProjection(config),
+                f"Real semantic projection unavailable at {path}",
+            )
+        return projection, None
+
     projection = load_projection(settings.projection_model_path, config)
     if isinstance(projection, NullProjection):
         return projection, f"Semantic projection unavailable at {settings.projection_model_path}"
@@ -434,6 +550,58 @@ def _build_documents(case: EvalCase) -> list[SearchDocument]:
     return documents
 
 
+def _clone_case_as_stored(case: EvalCase) -> EvalCase:
+    documents: list[dict[str, Any]] = []
+    for payload in case.documents:
+        cloned = dict(payload)
+        cloned["source_origin"] = "stored"
+        cloned["source_type"] = cloned.get("source_type") or "upload"
+        documents.append(cloned)
+
+    generated_lines = dict(case.generated_lines) if case.generated_lines is not None else None
+    if generated_lines is not None:
+        generated_lines["source_origin"] = "stored"
+        generated_lines["source_type"] = generated_lines.get("source_type") or "upload"
+
+    return EvalCase(
+        id=f"{case.id}:stored-clone",
+        query=case.query,
+        top_k=case.top_k,
+        profiles=case.profiles,
+        documents=documents,
+        expected=case.expected,
+        disallowed_sources=case.disallowed_sources,
+        generated_lines=generated_lines,
+        notes=case.notes,
+    )
+
+
+def _add_persistence_dependence_ratio(
+    metrics: dict[str, float],
+    cases: list[EvalCase],
+    executor: SpanExecutor,
+    *,
+    top_k_override: int | None,
+) -> None:
+    stored_scores = [
+        evaluate_case(
+            _clone_case_as_stored(case),
+            executor,
+            top_k_override=top_k_override,
+            cacheable=True,
+        )
+        for case in cases
+    ]
+    stored_metrics = _aggregate_metrics(stored_scores)
+    cold_value = metrics.get("source_recall_at_k", 0.0)
+    stored_value = stored_metrics.get("source_recall_at_k", 0.0)
+    if cold_value <= 0.0:
+        ratio = 1.0 if stored_value <= 0.0 else float("inf")
+    else:
+        ratio = stored_value / cold_value
+    metrics["persistence_dependence_ratio"] = round(float(ratio), 4)
+
+
 def _source_id(result: SearchResult) -> str | None:
     value = result.metadata.get("source_id") if isinstance(result.metadata, dict) else None
     if value is None:
@@ -463,21 +631,46 @@ def _match_span_evidence(result: SearchResult, needle: str) -> tuple[bool, bool,
     return False, False, False
 
 
+def _result_matches_expected(
+    result: SearchResult,
+    expected: ExpectedHit,
+) -> tuple[bool, bool, bool]:
+    if _source_id(result) != expected.source_id:
+        return False, False, False
+    if not expected.must_include_text:
+        return True, bool(result.primary_span), False
+    return _match_span_evidence(result, expected.must_include_text)
+
+
+def _expected_span_hits(
+    results: list[SearchResult],
+    expected: list[ExpectedHit],
+) -> int:
+    hits = 0
+    for item in expected:
+        if any(_result_matches_expected(result, item)[0] for result in results):
+            hits += 1
+    return hits
+
+
 def evaluate_case(
     case: EvalCase,
     executor: SpanExecutor,
     *,
     top_k_override: int | None = None,
+    cacheable: bool = False,
+    cold_gate: ColdCorpusGate | None = None,
 ) -> EvalCaseScore:
     documents = _build_documents(case)
     top_k = top_k_override or case.top_k
 
+    cold_snapshot = cold_gate.snapshot() if cold_gate is not None else None
     started_at = perf_counter()
     outcome = executor.execute(
         query=case.query,
         documents=documents,
         top_k=top_k,
-        cacheable=False,
+        cacheable=cacheable,
     )
     elapsed_ms = round((perf_counter() - started_at) * 1000.0, 3)
 
@@ -492,6 +685,8 @@ def evaluate_case(
         "completion_reason",
         "partial_scan_limit" if bool(execution.get("partial")) else "complete",
     )
+    execution.setdefault("time_to_first_useful_ms", elapsed_ms if outcome.final_results else 0.0)
+    execution.setdefault("time_to_final_ms", elapsed_ms)
     execution.setdefault(
         "phase_counts",
         {
@@ -503,11 +698,13 @@ def evaluate_case(
     )
 
     top_results = outcome.final_results[:top_k]
+    top_five_results = outcome.final_results[:5]
 
     expected_total = len(case.expected)
     source_hits = 0
     span_hits = 0
     primary_hits = 0
+    span_hits_at_5 = _expected_span_hits(top_five_results, case.expected)
     exact_expected_total = 0
     exact_highlight_hits = 0
     semantic_expected_total = 0
@@ -569,6 +766,42 @@ def evaluate_case(
             if not span_match:
                 partial_expected_misses += 1
 
+    top_1_span_accuracy = 1.0
+    if case.expected:
+        top_1_span_accuracy = 0.0
+        if top_results:
+            top_1 = top_results[0]
+            for expected in case.expected:
+                span_match, primary_match, _ = _result_matches_expected(top_1, expected)
+                if span_match and primary_match:
+                    top_1_span_accuracy = 1.0
+                    break
+
+    exact_channel_results = [
+        result for result in top_results if "exact" in (result.channels or [])
+    ]
+    exact_true_positives = 0
+    for result in exact_channel_results:
+        for expected in case.expected:
+            if expected.match_type != "exact":
+                continue
+            span_match, _, _ = _result_matches_expected(result, expected)
+            if span_match:
+                exact_true_positives += 1
+                break
+    exact_hit_precision = (
+        exact_true_positives / len(exact_channel_results) if exact_channel_results else 1.0
+    )
+
+    misleading_partial_rate = 0.0
+    if bool(execution.get("partial")) and case.expected and top_results:
+        top_1 = top_results[0]
+        top_1_correct = any(
+            _result_matches_expected(top_1, expected)[0] for expected in case.expected
+        )
+        if not top_1_correct and not bool(top_1.metadata.get("retrieval_partial")):
+            misleading_partial_rate = 1.0
+
     disallowed_hits: list[str] = []
     if case.disallowed_sources:
         disallowed = set(case.disallowed_sources)
@@ -579,6 +812,7 @@ def evaluate_case(
 
     source_recall = source_hits / expected_total if expected_total else 1.0
     span_recall = span_hits / expected_total if expected_total else 1.0
+    span_recall_at_5 = span_hits_at_5 / expected_total if expected_total else 1.0
     primary_accuracy = primary_hits / expected_total if expected_total else 1.0
     exact_highlight_rate = (
         exact_highlight_hits / exact_expected_total if exact_expected_total else 1.0
@@ -589,16 +823,33 @@ def evaluate_case(
     partial_miss_rate = (
         partial_expected_misses / partial_expected_total if partial_expected_total else 0.0
     )
+    semantic_hit_recall = (
+        semantic_context_hits / semantic_expected_total if semantic_expected_total else 1.0
+    )
+    cold_gate_failures: list[str] = []
+    if cold_gate is not None and cold_snapshot is not None:
+        cold_gate_failures = cold_gate.failures(
+            cold_snapshot,
+            cacheable=cacheable,
+            execution=execution,
+        )
 
     return EvalCaseScore(
         case_id=case.id,
         source_recall=source_recall,
         span_recall=span_recall,
         primary_span_accuracy=primary_accuracy,
+        top_1_span_accuracy=top_1_span_accuracy,
+        span_recall_at_5=span_recall_at_5,
         exact_highlight_rate=exact_highlight_rate,
+        exact_hit_precision=exact_hit_precision,
         semantic_context_success=semantic_context_success,
+        semantic_hit_recall=semantic_hit_recall,
         partial_miss_rate=partial_miss_rate,
+        misleading_partial_rate=misleading_partial_rate,
         time_to_result_ms=elapsed_ms,
+        time_to_first_useful_ms=float(execution.get("time_to_first_useful_ms", 0.0)),
+        time_to_final_ms=float(execution.get("time_to_final_ms", elapsed_ms)),
         windows_scanned=int(execution.get("scanned_windows", 0)),
         window_count=int(execution.get("window_count", 0)),
         candidate_count=int(execution.get("candidate_count", 0)),
@@ -607,6 +858,7 @@ def evaluate_case(
         missing_sources=missing_sources,
         missing_spans=missing_spans,
         disallowed_hits=disallowed_hits,
+        cold_gate_failures=cold_gate_failures,
     )
 
 
@@ -629,12 +881,19 @@ def _aggregate_metrics(case_scores: list[EvalCaseScore]) -> dict[str, float]:
         return {
             "source_recall_at_k": 0.0,
             "span_recall_at_k": 0.0,
+            "span_recall_at_5": 0.0,
             "primary_span_accuracy": 0.0,
+            "top_1_span_accuracy": 0.0,
             "exact_highlight_rate": 0.0,
+            "exact_hit_precision": 0.0,
             "semantic_context_success_rate": 0.0,
+            "semantic_hit_recall": 0.0,
             "partial_miss_rate": 0.0,
+            "misleading_partial_rate": 0.0,
             "time_to_result_ms": 0.0,
             "time_to_result_ms_p95": 0.0,
+            "time_to_first_useful_ms": 0.0,
+            "time_to_final_ms": 0.0,
             "windows_scanned_over_window_count": 0.0,
             "candidate_count": 0.0,
             "shortlisted_candidates": 0.0,
@@ -642,11 +901,22 @@ def _aggregate_metrics(case_scores: list[EvalCaseScore]) -> dict[str, float]:
 
     source_recall = mean(score.source_recall for score in case_scores)
     span_recall = mean(score.span_recall for score in case_scores)
+    span_recall_at_5 = mean(score.span_recall_at_5 for score in case_scores)
     primary_accuracy = mean(score.primary_span_accuracy for score in case_scores)
+    top_1_accuracy = mean(score.top_1_span_accuracy for score in case_scores)
     exact_highlight = mean(score.exact_highlight_rate for score in case_scores)
+    exact_precision = mean(score.exact_hit_precision for score in case_scores)
     semantic_context = mean(score.semantic_context_success for score in case_scores)
+    semantic_recall = mean(score.semantic_hit_recall for score in case_scores)
     partial_miss = mean(score.partial_miss_rate for score in case_scores)
+    misleading_partial = mean(score.misleading_partial_rate for score in case_scores)
     times = sorted(score.time_to_result_ms for score in case_scores)
+    first_useful_times = [
+        score.time_to_first_useful_ms
+        for score in case_scores
+        if score.time_to_first_useful_ms > 0.0
+    ]
+    final_times = [score.time_to_final_ms for score in case_scores]
 
     windows_total = sum(score.window_count for score in case_scores)
     scanned_total = sum(score.windows_scanned for score in case_scores)
@@ -655,12 +925,22 @@ def _aggregate_metrics(case_scores: list[EvalCaseScore]) -> dict[str, float]:
     return {
         "source_recall_at_k": round(float(source_recall), 4),
         "span_recall_at_k": round(float(span_recall), 4),
+        "span_recall_at_5": round(float(span_recall_at_5), 4),
         "primary_span_accuracy": round(float(primary_accuracy), 4),
+        "top_1_span_accuracy": round(float(top_1_accuracy), 4),
         "exact_highlight_rate": round(float(exact_highlight), 4),
+        "exact_hit_precision": round(float(exact_precision), 4),
         "semantic_context_success_rate": round(float(semantic_context), 4),
+        "semantic_hit_recall": round(float(semantic_recall), 4),
         "partial_miss_rate": round(float(partial_miss), 4),
+        "misleading_partial_rate": round(float(misleading_partial), 4),
         "time_to_result_ms": round(float(mean(times)), 3),
         "time_to_result_ms_p95": round(_percentile(times, 95.0), 3),
+        "time_to_first_useful_ms": round(
+            float(mean(first_useful_times)) if first_useful_times else 0.0,
+            3,
+        ),
+        "time_to_final_ms": round(float(mean(final_times)), 3),
         "windows_scanned_over_window_count": round(float(scanned_ratio), 4),
         "candidate_count": round(float(mean(score.candidate_count for score in case_scores)), 3),
         "shortlisted_candidates": round(
@@ -696,22 +976,26 @@ def run_eval(config: EvalRunConfig) -> EvalScorecard:
     cases = load_eval_cases(config.fixtures_dir, config.profile)
 
     projection, projection_warning = _resolve_projection(config.semantic_mode)
-    if config.profile == "semantic" and config.semantic_mode in {"real", "auto"}:
-        if isinstance(projection, NullProjection):
-            duration_ms = round((perf_counter() - started_at) * 1000.0, 3)
-            return EvalScorecard(
-                profile=config.profile,
-                semantic_mode=config.semantic_mode,
-                status="skipped",
-                skipped_reason=projection_warning,
-                metrics={},
-                failed_gates=[],
-                cases_evaluated=0,
-                duration_ms=duration_ms,
-                case_scores=[],
-            )
+    if config.semantic_mode == "real" and isinstance(projection, NullProjection):
+        duration_ms = round((perf_counter() - started_at) * 1000.0, 3)
+        return EvalScorecard(
+            profile=config.profile,
+            semantic_mode=config.semantic_mode,
+            status="skipped",
+            skipped_reason=projection_warning,
+            metrics={},
+            failed_gates=[],
+            cases_evaluated=0,
+            duration_ms=duration_ms,
+            case_scores=[],
+        )
 
     executor = _build_executor(projection)
+    cold_gate = (
+        ColdCorpusGate.from_settings(bm25_cache=config.bm25_cache)
+        if config.cold_gate
+        else None
+    )
 
     case_scores: list[EvalCaseScore] = []
     for case in cases:
@@ -720,10 +1004,18 @@ def run_eval(config: EvalRunConfig) -> EvalScorecard:
                 case,
                 executor,
                 top_k_override=config.top_k_override,
+                cacheable=False,
+                cold_gate=cold_gate,
             )
         )
 
     metrics = _aggregate_metrics(case_scores)
+    _add_persistence_dependence_ratio(
+        metrics,
+        cases,
+        executor,
+        top_k_override=config.top_k_override,
+    )
     failed_gates = _evaluate_gates(config, metrics) if config.gate_metrics else []
 
     disallowed_hits = [
@@ -733,6 +1025,14 @@ def run_eval(config: EvalRunConfig) -> EvalScorecard:
     ]
     if disallowed_hits:
         failed_gates.append(f"disallowed sources returned: {sorted(set(disallowed_hits))}")
+
+    cold_gate_failures = [
+        failure
+        for case_score in case_scores
+        for failure in case_score.cold_gate_failures
+    ]
+    if cold_gate_failures:
+        failed_gates.extend(sorted(set(cold_gate_failures)))
 
     status: Literal["passed", "failed", "skipped"] = "passed"
     if failed_gates:
@@ -776,7 +1076,14 @@ def format_scorecard_table(scorecard: EvalScorecard) -> str:
     return "\n".join(lines)
 
 
+def run_layer_eval(layer: str, config: EvalRunConfig) -> EvalScorecard:
+    from app.retrieval.eval_layers import run_layer_eval as _run_layer_eval
+
+    return _run_layer_eval(layer, config)
+
+
 __all__ = [
+    "ColdCorpusGate",
     "DeterministicEvalProjection",
     "EvalCase",
     "EvalCaseScore",
@@ -788,4 +1095,5 @@ __all__ = [
     "format_scorecard_table",
     "load_eval_cases",
     "run_eval",
+    "run_layer_eval",
 ]

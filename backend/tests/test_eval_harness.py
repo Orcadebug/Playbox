@@ -7,7 +7,9 @@ import pytest
 
 from app.parsers.base import ParserDetector, build_default_parser_registry
 from app.parsers.plaintext import PlainTextParser
+from app.retrieval.bm25_cache import BM25IndexCache
 from app.retrieval.eval_harness import (
+    ColdCorpusGate,
     DeterministicEvalProjection,
     EvalCase,
     EvalRunConfig,
@@ -100,8 +102,13 @@ def test_evaluate_case_scores_exact_and_semantic_hits() -> None:
     exact_score = evaluate_case(exact_case, executor)
     assert exact_score.source_recall == 1.0
     assert exact_score.span_recall == 1.0
+    assert exact_score.span_recall_at_5 == 1.0
     assert exact_score.primary_span_accuracy == 1.0
+    assert exact_score.top_1_span_accuracy == 1.0
     assert exact_score.exact_highlight_rate == 1.0
+    assert exact_score.exact_hit_precision == 1.0
+    assert exact_score.time_to_first_useful_ms > 0
+    assert exact_score.time_to_final_ms > 0
 
     semantic_case = EvalCase(
         id="semantic-hit",
@@ -129,6 +136,46 @@ def test_evaluate_case_scores_exact_and_semantic_hits() -> None:
     semantic_score = evaluate_case(semantic_case, executor)
     assert semantic_score.source_recall == 1.0
     assert semantic_score.semantic_context_success == 1.0
+    assert semantic_score.semantic_hit_recall == 1.0
+
+
+def test_cold_corpus_gate_keeps_cache_and_projection_untouched(tmp_path: Path) -> None:
+    executor = _executor()
+    cache = BM25IndexCache(ttl=60.0, max_entries=5)
+    case = EvalCase(
+        id="cold-hit",
+        query="cold marker",
+        top_k=3,
+        profiles=("smoke",),
+        documents=[
+            {
+                "source_id": "cold-raw",
+                "source_name": "cold.txt",
+                "source_origin": "raw",
+                "source_type": "ticket",
+                "content": "cold marker appears in a transient raw ticket",
+            }
+        ],
+        expected=[
+            ExpectedHit(
+                source_id="cold-raw",
+                must_include_text="cold marker",
+                match_type="exact",
+            )
+        ],
+    )
+
+    score = evaluate_case(
+        case,
+        executor,
+        cold_gate=ColdCorpusGate(
+            bm25_cache=cache,
+            projection_model_path=tmp_path / "missing-projection.npz",
+        ),
+    )
+
+    assert score.cold_gate_failures == []
+    assert cache.snapshot() == {}
 
 
 def test_evaluate_case_partial_miss_rate_increments_for_partial_scan() -> None:
@@ -173,6 +220,7 @@ def test_run_eval_applies_gate_failures(fixtures_dir: Path) -> None:
     assert scorecard.status == "failed"
     assert scorecard.exit_code == 2
     assert scorecard.failed_gates
+    assert "persistence_dependence_ratio" in scorecard.metrics
 
 
 def test_semantic_profile_skips_when_real_projection_missing(

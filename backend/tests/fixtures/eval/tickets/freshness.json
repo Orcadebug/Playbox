@@ -1,0 +1,786 @@
+{
+  "pack_id": "tickets_freshness",
+  "authorship": "ai-generated",
+  "cases": [
+    {
+      "id": "freshness_01",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "freshness marker 01",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-01-newest",
+          "source_name": "fresh-new-01.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 01 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-01-older",
+          "source_name": "fresh-old-01.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 01 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-01-newest",
+          "must_include_text": "freshness marker 01",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_02",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "freshness marker 02",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-02-newest",
+          "source_name": "fresh-new-02.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 02 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-02-older",
+          "source_name": "fresh-old-02.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 02 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-02-newest",
+          "must_include_text": "freshness marker 02",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_03",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "freshness marker 03",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-03-newest",
+          "source_name": "fresh-new-03.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 03 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-03-older",
+          "source_name": "fresh-old-03.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 03 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-03-newest",
+          "must_include_text": "freshness marker 03",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_04",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "freshness marker 04",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-04-newest",
+          "source_name": "fresh-new-04.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 04 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-04-older",
+          "source_name": "fresh-old-04.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 04 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-04-newest",
+          "must_include_text": "freshness marker 04",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_05",
+      "profiles": [
+        "regression",
+        "smoke"
+      ],
+      "query": "freshness marker 05",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-05-newest",
+          "source_name": "fresh-new-05.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 05 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-05-older",
+          "source_name": "fresh-old-05.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 05 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-05-newest",
+          "must_include_text": "freshness marker 05",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_06",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 06",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-06-newest",
+          "source_name": "fresh-new-06.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 06 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-06-older",
+          "source_name": "fresh-old-06.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 06 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-06-newest",
+          "must_include_text": "freshness marker 06",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_07",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 07",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-07-newest",
+          "source_name": "fresh-new-07.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 07 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-07-older",
+          "source_name": "fresh-old-07.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 07 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-07-newest",
+          "must_include_text": "freshness marker 07",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_08",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 08",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-08-newest",
+          "source_name": "fresh-new-08.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 08 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-08-older",
+          "source_name": "fresh-old-08.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 08 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-08-newest",
+          "must_include_text": "freshness marker 08",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_09",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 09",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-09-newest",
+          "source_name": "fresh-new-09.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 09 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-09-older",
+          "source_name": "fresh-old-09.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 09 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-09-newest",
+          "must_include_text": "freshness marker 09",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_10",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 10",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-10-newest",
+          "source_name": "fresh-new-10.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 10 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-10-older",
+          "source_name": "fresh-old-10.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 10 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-10-newest",
+          "must_include_text": "freshness marker 10",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_11",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 11",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-11-newest",
+          "source_name": "fresh-new-11.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 11 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-11-older",
+          "source_name": "fresh-old-11.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 11 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-11-newest",
+          "must_include_text": "freshness marker 11",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_12",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 12",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-12-newest",
+          "source_name": "fresh-new-12.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 12 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-12-older",
+          "source_name": "fresh-old-12.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 12 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-12-newest",
+          "must_include_text": "freshness marker 12",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_13",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 13",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-13-newest",
+          "source_name": "fresh-new-13.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 13 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-13-older",
+          "source_name": "fresh-old-13.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 13 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-13-newest",
+          "must_include_text": "freshness marker 13",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_14",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 14",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-14-newest",
+          "source_name": "fresh-new-14.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 14 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-14-older",
+          "source_name": "fresh-old-14.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 14 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-14-newest",
+          "must_include_text": "freshness marker 14",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_15",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 15",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-15-newest",
+          "source_name": "fresh-new-15.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 15 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-15-older",
+          "source_name": "fresh-old-15.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 15 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-15-newest",
+          "must_include_text": "freshness marker 15",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_16",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 16",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-16-newest",
+          "source_name": "fresh-new-16.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 16 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-16-older",
+          "source_name": "fresh-old-16.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 16 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-16-newest",
+          "must_include_text": "freshness marker 16",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_17",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 17",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-17-newest",
+          "source_name": "fresh-new-17.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 17 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-17-older",
+          "source_name": "fresh-old-17.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 17 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-17-newest",
+          "must_include_text": "freshness marker 17",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_18",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 18",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-18-newest",
+          "source_name": "fresh-new-18.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 18 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-18-older",
+          "source_name": "fresh-old-18.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 18 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-18-newest",
+          "must_include_text": "freshness marker 18",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_19",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 19",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-19-newest",
+          "source_name": "fresh-new-19.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 19 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-19-older",
+          "source_name": "fresh-old-19.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 19 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-19-newest",
+          "must_include_text": "freshness marker 19",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_20",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 20",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-20-newest",
+          "source_name": "fresh-new-20.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 20 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-20-older",
+          "source_name": "fresh-old-20.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 20 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-20-newest",
+          "must_include_text": "freshness marker 20",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_21",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 21",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-21-newest",
+          "source_name": "fresh-new-21.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 21 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-21-older",
+          "source_name": "fresh-old-21.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 21 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-21-newest",
+          "must_include_text": "freshness marker 21",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_22",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 22",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-22-newest",
+          "source_name": "fresh-new-22.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 22 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-22-older",
+          "source_name": "fresh-old-22.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 22 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-22-newest",
+          "must_include_text": "freshness marker 22",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_23",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 23",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-23-newest",
+          "source_name": "fresh-new-23.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 23 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-23-older",
+          "source_name": "fresh-old-23.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 23 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-23-newest",
+          "must_include_text": "freshness marker 23",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_24",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 24",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-24-newest",
+          "source_name": "fresh-new-24.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 24 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-24-older",
+          "source_name": "fresh-old-24.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 24 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-24-newest",
+          "must_include_text": "freshness marker 24",
+          "match_type": "exact"
+        }
+      ]
+    },
+    {
+      "id": "freshness_25",
+      "profiles": [
+        "regression"
+      ],
+      "query": "freshness marker 25",
+      "top_k": 1,
+      "documents": [
+        {
+          "source_id": "fresh-25-newest",
+          "source_name": "fresh-new-25.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 25 appears in the newest customer update with the same wording as the archive."
+        },
+        {
+          "source_id": "fresh-25-older",
+          "source_name": "fresh-old-25.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "freshness marker 25 appears in the newest customer update with the same wording as the archive."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "fresh-25-newest",
+          "must_include_text": "freshness marker 25",
+          "match_type": "exact"
+        }
+      ]
+    }
+  ]
+}

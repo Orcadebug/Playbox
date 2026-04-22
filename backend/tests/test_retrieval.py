@@ -325,6 +325,20 @@ def test_bm25_cache_returns_same_index() -> None:
     assert idx1 is idx2, "Same content hash should return cached instance"
 
 
+def test_bm25_cache_snapshot_is_stable_and_thread_safe() -> None:
+    cache = BM25IndexCache(ttl=60.0, max_entries=5)
+    chunks = _make_chunks(3)
+
+    assert cache.snapshot() == {}
+    cache.get_or_build("ws1", chunks)
+    first = cache.snapshot()
+    second = cache.snapshot()
+
+    assert first == second
+    assert first["ws1"]["chunk_count"] == len(chunks)
+    assert "content_hash" in first["ws1"]
+
+
 def test_bm25_cache_invalidates_on_content_change() -> None:
     cache = BM25IndexCache(ttl=60.0, max_entries=5)
     chunks_a = _make_chunks(3)

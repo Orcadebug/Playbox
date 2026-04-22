@@ -1,0 +1,936 @@
+{
+  "pack_id": "tickets_mixed_exact_semantic",
+  "authorship": "ai-generated",
+  "cases": [
+    {
+      "id": "mixed_exact_semantic_01",
+      "profiles": [
+        "regression",
+        "smoke",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7201\") one time code loop",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-01-gold",
+          "source_name": "mixed-01.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7201 access portal challenge. agent observed the access portal challenge returning the user to the start screen. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-01-noise",
+          "source_name": "mixed-noise-01.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "one note without the requested identifier. portal color preference only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-01-gold",
+          "must_include_text": "MX-7201",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-01-gold",
+          "must_include_text": "access portal challenge",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_02",
+      "profiles": [
+        "regression",
+        "smoke",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7202\") workspace owner approval",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-02-gold",
+          "source_name": "mixed-02.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7202 team admin consent. case notes show team admin consent is required before the workspace opens. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-02-noise",
+          "source_name": "mixed-noise-02.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "workspace note without the requested identifier. workspace banner update only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-02-gold",
+          "must_include_text": "MX-7202",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-02-gold",
+          "must_include_text": "team admin consent",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_03",
+      "profiles": [
+        "regression",
+        "smoke",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7203\") profile photo crop",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-03-gold",
+          "source_name": "mixed-03.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7203 avatar image trim. user reports the avatar image trim removes the top of the uploaded portrait. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-03-noise",
+          "source_name": "mixed-noise-03.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "profile note without the requested identifier. photo invoice archive only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-03-gold",
+          "must_include_text": "MX-7203",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-03-gold",
+          "must_include_text": "avatar image trim",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_04",
+      "profiles": [
+        "regression",
+        "smoke",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7204\") address form province",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-04-gold",
+          "source_name": "mixed-04.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7204 region field validation. agent reproduced region field validation blocking the saved address. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-04-noise",
+          "source_name": "mixed-noise-04.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "address note without the requested identifier. address book export only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-04-gold",
+          "must_include_text": "MX-7204",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-04-gold",
+          "must_include_text": "region field validation",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_05",
+      "profiles": [
+        "regression",
+        "smoke",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7205\") export missing columns",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-05-gold",
+          "source_name": "mixed-05.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7205 report field omission. customer says report field omission hides the sku and count columns. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-05-noise",
+          "source_name": "mixed-noise-05.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "export note without the requested identifier. export font setting only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-05-gold",
+          "must_include_text": "MX-7205",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-05-gold",
+          "must_include_text": "report field omission",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_06",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7206\") attachment preview blank",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-06-gold",
+          "source_name": "mixed-06.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7206 file viewer empty panel. support saw file viewer empty panel after opening a png attachment. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-06-noise",
+          "source_name": "mixed-noise-06.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "attachment note without the requested identifier. attachment naming policy only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-06-gold",
+          "must_include_text": "MX-7206",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-06-gold",
+          "must_include_text": "file viewer empty panel",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_07",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7207\") calendar invite drift",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-07-gold",
+          "source_name": "mixed-07.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7207 schedule timezone shift. case body says schedule timezone shift moves the meeting by one hour. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-07-noise",
+          "source_name": "mixed-noise-07.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "calendar note without the requested identifier. calendar color theme only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-07-gold",
+          "must_include_text": "MX-7207",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-07-gold",
+          "must_include_text": "schedule timezone shift",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_08",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7208\") role downgrade warning",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-08-gold",
+          "source_name": "mixed-08.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7208 permission level notice. admin saw permission level notice when changing a collaborator to viewer. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-08-noise",
+          "source_name": "mixed-noise-08.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "role note without the requested identifier. role icon placement only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-08-gold",
+          "must_include_text": "MX-7208",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-08-gold",
+          "must_include_text": "permission level notice",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_09",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7209\") saved filter vanish",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-09-gold",
+          "source_name": "mixed-09.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7209 search view preset lost. agent notes search view preset lost after refreshing the queue. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-09-noise",
+          "source_name": "mixed-noise-09.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "saved note without the requested identifier. filter label spelling only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-09-gold",
+          "must_include_text": "MX-7209",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-09-gold",
+          "must_include_text": "search view preset lost",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_10",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7210\") keyboard focus trap",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-10-gold",
+          "source_name": "mixed-10.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7210 tab order loop. tester found tab order loop inside the modal footer. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-10-noise",
+          "source_name": "mixed-noise-10.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "keyboard note without the requested identifier. keyboard shortcut list only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-10-gold",
+          "must_include_text": "MX-7210",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-10-gold",
+          "must_include_text": "tab order loop",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_11",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7211\") mobile menu freeze",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-11-gold",
+          "source_name": "mixed-11.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7211 navigation drawer stall. customer describes navigation drawer stall on narrow screens. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-11-noise",
+          "source_name": "mixed-noise-11.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "mobile note without the requested identifier. mobile wallpaper choice only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-11-gold",
+          "must_include_text": "MX-7211",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-11-gold",
+          "must_include_text": "navigation drawer stall",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_12",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7212\") language picker reset",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-12-gold",
+          "source_name": "mixed-12.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7212 locale selector rollback. case says locale selector rollback returns the page to english. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-12-noise",
+          "source_name": "mixed-noise-12.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "language note without the requested identifier. language course catalog only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-12-gold",
+          "must_include_text": "MX-7212",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-12-gold",
+          "must_include_text": "locale selector rollback",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_13",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7213\") signature block overlap",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-13-gold",
+          "source_name": "mixed-13.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7213 footer signature collision. agent found footer signature collision on compact receipts. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-13-noise",
+          "source_name": "mixed-noise-13.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "signature note without the requested identifier. signature font request only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-13-gold",
+          "must_include_text": "MX-7213",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-13-gold",
+          "must_include_text": "footer signature collision",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_14",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7214\") coupon field hidden",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-14-gold",
+          "source_name": "mixed-14.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7214 promo entry concealed. shopper reports promo entry concealed behind the summary panel. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-14-noise",
+          "source_name": "mixed-noise-14.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "coupon note without the requested identifier. coupon booklet inventory only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-14-gold",
+          "must_include_text": "MX-7214",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-14-gold",
+          "must_include_text": "promo entry concealed",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_15",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7215\") device handoff lost",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-15-gold",
+          "source_name": "mixed-15.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7215 session transfer gap. notes describe session transfer gap between laptop and phone. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-15-noise",
+          "source_name": "mixed-noise-15.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "device note without the requested identifier. device warranty note only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-15-gold",
+          "must_include_text": "MX-7215",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-15-gold",
+          "must_include_text": "session transfer gap",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_16",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7216\") bulk edit skipped",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-16-gold",
+          "source_name": "mixed-16.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7216 mass update omission. operator says mass update omission left three records unchanged. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-16-noise",
+          "source_name": "mixed-noise-16.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "bulk note without the requested identifier. bulk packaging note only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-16-gold",
+          "must_include_text": "MX-7216",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-16-gold",
+          "must_include_text": "mass update omission",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_17",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7217\") toast message stale",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-17-gold",
+          "source_name": "mixed-17.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7217 notification copy outdated. case text says notification copy outdated after save succeeds. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-17-noise",
+          "source_name": "mixed-noise-17.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "toast note without the requested identifier. toast breakfast event only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-17-gold",
+          "must_include_text": "MX-7217",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-17-gold",
+          "must_include_text": "notification copy outdated",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_18",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7218\") map pin offset",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-18-gold",
+          "source_name": "mixed-18.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7218 location marker displacement. agent confirmed location marker displacement two blocks east. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-18-noise",
+          "source_name": "mixed-noise-18.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "map note without the requested identifier. map legend color only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-18-gold",
+          "must_include_text": "MX-7218",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-18-gold",
+          "must_include_text": "location marker displacement",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_19",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7219\") voice note silent",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-19-gold",
+          "source_name": "mixed-19.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7219 audio memo playback mute. customer reports audio memo playback mute in the timeline. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-19-noise",
+          "source_name": "mixed-noise-19.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "voice note without the requested identifier. voice actor credit only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-19-gold",
+          "must_include_text": "MX-7219",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-19-gold",
+          "must_include_text": "audio memo playback mute",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_20",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7220\") scanner page split",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-20-gold",
+          "source_name": "mixed-20.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7220 document capture separation. case says document capture separation divides one receipt into two files. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-20-noise",
+          "source_name": "mixed-noise-20.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "scanner note without the requested identifier. scanner cleaning reminder only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-20-gold",
+          "must_include_text": "MX-7220",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-20-gold",
+          "must_include_text": "document capture separation",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_21",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7221\") team mention ghost",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-21-gold",
+          "source_name": "mixed-21.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7221 collaborator tag phantom. agent saw collaborator tag phantom after removing a teammate. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-21-noise",
+          "source_name": "mixed-noise-21.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "team note without the requested identifier. team lunch order only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-21-gold",
+          "must_include_text": "MX-7221",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-21-gold",
+          "must_include_text": "collaborator tag phantom",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_22",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7222\") draft autosave gap",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-22-gold",
+          "source_name": "mixed-22.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7222 composition save lapse. writer reports composition save lapse after closing the tab. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-22-noise",
+          "source_name": "mixed-noise-22.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "draft note without the requested identifier. draft folder icon only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-22-gold",
+          "must_include_text": "MX-7222",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-22-gold",
+          "must_include_text": "composition save lapse",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_23",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7223\") chart legend swap",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-23-gold",
+          "source_name": "mixed-23.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7223 graph key inversion. analyst says graph key inversion swaps east and west labels. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-23-noise",
+          "source_name": "mixed-noise-23.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "chart note without the requested identifier. chart paper size only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-23-gold",
+          "must_include_text": "MX-7223",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-23-gold",
+          "must_include_text": "graph key inversion",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_24",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7224\") approval badge absent",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-24-gold",
+          "source_name": "mixed-24.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7224 review status emblem missing. manager notes review status emblem missing on approved rows. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-24-noise",
+          "source_name": "mixed-noise-24.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "approval note without the requested identifier. badge shipping box only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-24-gold",
+          "must_include_text": "MX-7224",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-24-gold",
+          "must_include_text": "review status emblem missing",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    },
+    {
+      "id": "mixed_exact_semantic_25",
+      "profiles": [
+        "regression",
+        "semantic"
+      ],
+      "query": "regex(\"MX-7225\") print margin creep",
+      "top_k": 5,
+      "documents": [
+        {
+          "source_id": "mixed-25-gold",
+          "source_name": "mixed-25.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "MX-7225 paper edge spacing drift. agent reproduced paper edge spacing drift on second page. The support owner linked this hybrid lookup to the current customer case."
+        },
+        {
+          "source_id": "mixed-25-noise",
+          "source_name": "mixed-noise-25.txt",
+          "source_origin": "raw",
+          "source_type": "ticket",
+          "content": "print note without the requested identifier. print queue ringtone only."
+        }
+      ],
+      "expected": [
+        {
+          "source_id": "mixed-25-gold",
+          "must_include_text": "MX-7225",
+          "match_type": "exact"
+        },
+        {
+          "source_id": "mixed-25-gold",
+          "must_include_text": "paper edge spacing drift",
+          "match_type": "semantic_or_context"
+        }
+      ]
+    }
+  ]
+}

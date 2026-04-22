@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Literal
@@ -26,6 +26,9 @@ from app.retrieval.sparse_projection import (
 from app.retrieval.trie import QueryTrie
 from app.schemas.documents import Chunk
 from app.schemas.search import SearchDocument, SearchResult
+
+_CHANNEL_ORDER = ("exact", "semantic", "structure")
+_ChannelName = Literal["exact", "semantic", "structure"]
 
 
 def _metadata_spans(metadata: dict[str, object]) -> list[tuple[int, int]] | None:
@@ -146,6 +149,7 @@ def _build_context_span(
 @dataclass(slots=True)
 class WindowCandidate:
     window: SourceWindow
+    source_order: int
     exact_score: float
     proxy_score: float
     structure_score: float
@@ -173,10 +177,22 @@ class SpanExecutor:
         parser_detector: ParserDetector,
         reranker: Reranker,
         projection: SparseProjection | DeterministicSemanticProjection | NullProjection,
+        enabled_channels: Iterable[str] | None = None,
+        rerank_enabled: bool = True,
     ) -> None:
         self.parser_detector = parser_detector
         self.reranker = reranker
         self.projection = projection
+        requested = set(enabled_channels) if enabled_channels is not None else set(_CHANNEL_ORDER)
+        unknown = requested - set(_CHANNEL_ORDER)
+        if unknown:
+            raise ValueError(f"Unsupported retrieval channels: {sorted(unknown)}")
+        self.enabled_channels: tuple[_ChannelName, ...] = tuple(
+            channel for channel in _CHANNEL_ORDER if channel in requested
+        )  # type: ignore[assignment]
+        if not self.enabled_channels:
+            raise ValueError("At least one retrieval channel must be enabled")
+        self.rerank_enabled = rerank_enabled
 
     def execute(
         self,
@@ -187,11 +203,14 @@ class SpanExecutor:
         cacheable: bool = False,
     ) -> SpanExecutionOutcome:
         started_at = perf_counter()
+        phase_timings: dict[str, float] = {}
+        window_started_at = perf_counter()
         bytes_loaded = sum(len(document.data) for document in documents)
         windows = build_source_windows_from_documents(
             documents,
             parser_detector=self.parser_detector,
         )
+        phase_timings["window_load_ms"] = round((perf_counter() - window_started_at) * 1000.0, 3)
         origins = {window.source_origin for window in windows}
         plan = build_query_plan(
             query=query,
@@ -203,15 +222,21 @@ class SpanExecutor:
         scanned_windows = windows[: plan.scan_limit]
 
         if not scanned_windows:
+            elapsed_ms = round((perf_counter() - started_at) * 1000.0, 3)
+            phase_timings["total_ms"] = elapsed_ms
             execution = {
                 **plan.to_dict(),
+                "active_channels": list(self.enabled_channels),
                 "scanned_windows": 0,
                 "candidate_count": 0,
                 "shortlisted_candidates": 0,
-                "elapsed_ms": round((perf_counter() - started_at) * 1000.0, 3),
+                "elapsed_ms": elapsed_ms,
                 "bytes_loaded": bytes_loaded,
                 "skipped_windows": len(windows),
                 "completion_reason": "no_windows",
+                "phase_timings_ms": phase_timings,
+                "time_to_first_useful_ms": 0.0,
+                "time_to_final_ms": elapsed_ms,
                 "phase_counts": {
                     "exact_results": 0,
                     "proxy_results": 0,
@@ -228,15 +253,40 @@ class SpanExecutor:
                 execution=execution,
             )
 
-        exact_state = build_exact_channel(query)
-        query_tokens = tokenize_query(query)
-        proxy_scores = score_proxy_channel(query, scanned_windows, self.projection)
+        exact_enabled = "exact" in self.enabled_channels
+        semantic_enabled = "semantic" in self.enabled_channels
+        structure_enabled = "structure" in self.enabled_channels
+
+        exact_started_at = perf_counter()
+        exact_state = build_exact_channel(query) if exact_enabled else None
+        phase_timings["exact_setup_ms"] = round((perf_counter() - exact_started_at) * 1000.0, 3)
+
+        structure_started_at = perf_counter()
+        query_tokens = tokenize_query(query) if structure_enabled else []
+        phase_timings["structure_setup_ms"] = round(
+            (perf_counter() - structure_started_at) * 1000.0,
+            3,
+        )
+
+        semantic_started_at = perf_counter()
+        proxy_scores = (
+            score_proxy_channel(query, scanned_windows, self.projection)
+            if semantic_enabled
+            else [0.0 for _ in scanned_windows]
+        )
+        phase_timings["semantic_ms"] = round((perf_counter() - semantic_started_at) * 1000.0, 3)
 
         candidates: list[WindowCandidate] = []
+        scoring_started_at = perf_counter()
         for index, window in enumerate(scanned_windows):
-            exact_score, spans = score_exact_channel(exact_state, window)
+            if exact_state is not None:
+                exact_score, spans = score_exact_channel(exact_state, window)
+            else:
+                exact_score, spans = 0.0, []
             proxy_score = float(proxy_scores[index]) if index < len(proxy_scores) else 0.0
-            structure_score = score_structure_channel(query_tokens, window)
+            structure_score = (
+                score_structure_channel(query_tokens, window) if structure_enabled else 0.0
+            )
 
             channels: list[str] = []
             if exact_score > 0:
@@ -252,6 +302,7 @@ class SpanExecutor:
             candidates.append(
                 WindowCandidate(
                     window=window,
+                    source_order=index,
                     exact_score=exact_score,
                     proxy_score=proxy_score,
                     structure_score=structure_score,
@@ -266,12 +317,17 @@ class SpanExecutor:
                     spans=spans,
                 )
             )
+        phase_timings["candidate_score_ms"] = round(
+            (perf_counter() - scoring_started_at) * 1000.0,
+            3,
+        )
 
         candidates.sort(
             key=lambda item: (
                 -item.score,
                 -item.exact_score,
                 -item.proxy_score,
+                item.source_order,
                 item.window.window_id,
             )
         )
@@ -294,24 +350,49 @@ class SpanExecutor:
             )
             for candidate in proxy_candidates
         ]
+        time_to_first_useful_ms = 0.0
+        if exact_results or proxy_results:
+            time_to_first_useful_ms = round((perf_counter() - started_at) * 1000.0, 3)
 
-        reranked_hits = self.reranker.rerank(
-            query,
-            [self._candidate_to_hit(candidate, phase="reranked") for candidate in shortlist],
-            top_k=top_k,
-        )
-        reranked_results = [self._to_search_result(hit, query) for hit in reranked_hits]
+        rerank_started_at = perf_counter()
+        if self.rerank_enabled:
+            reranked_hits = self.reranker.rerank(
+                query,
+                [self._candidate_to_hit(candidate, phase="reranked") for candidate in shortlist],
+                top_k=top_k,
+            )
+            reranked_results = [self._to_search_result(hit, query) for hit in reranked_hits]
+        else:
+            reranked_results = []
+        phase_timings["rerank_ms"] = round((perf_counter() - rerank_started_at) * 1000.0, 3)
         final_results = reranked_results or proxy_results or exact_results
 
+        completion_reason = "partial_scan_limit" if plan.partial else "complete"
+        if plan.partial:
+            for result in (
+                exact_results
+                + proxy_results
+                + reranked_results
+                + final_results
+            ):
+                result.metadata["retrieval_partial"] = True
+                result.metadata["completion_reason"] = completion_reason
+
+        elapsed_ms = round((perf_counter() - started_at) * 1000.0, 3)
+        phase_timings["total_ms"] = elapsed_ms
         execution = {
             **plan.to_dict(),
+            "active_channels": list(self.enabled_channels),
             "scanned_windows": len(scanned_windows),
             "candidate_count": len(candidates),
             "shortlisted_candidates": len(shortlist),
-            "elapsed_ms": round((perf_counter() - started_at) * 1000.0, 3),
+            "elapsed_ms": elapsed_ms,
             "bytes_loaded": bytes_loaded,
             "skipped_windows": max(0, len(windows) - len(scanned_windows)),
-            "completion_reason": "partial_scan_limit" if plan.partial else "complete",
+            "completion_reason": completion_reason,
+            "phase_timings_ms": phase_timings,
+            "time_to_first_useful_ms": time_to_first_useful_ms,
+            "time_to_final_ms": elapsed_ms,
             "phase_counts": {
                 "exact_results": len(exact_results),
                 "proxy_results": len(proxy_results),
@@ -372,7 +453,11 @@ class SpanExecutor:
                 metadata.get("char_start", metadata.get("byte_start", 0)),
             )
         )
-        spans = _metadata_spans(metadata) or _query_spans(query, hit.chunk.text, hit.chunk.chunk_id)
+        metadata_spans = _metadata_spans(metadata)
+        if metadata_spans is None and "spans" not in metadata:
+            spans = _query_spans(query, hit.chunk.text, hit.chunk.chunk_id)
+        else:
+            spans = metadata_spans or []
         location = _location_dict(hit.chunk.location)
         offset_basis = str(metadata.get("offset_basis") or "source")
         if offset_basis not in {"source", "parsed"}:

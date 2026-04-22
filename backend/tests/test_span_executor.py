@@ -21,6 +21,24 @@ def _executor() -> SpanExecutor:
     )
 
 
+def _isolated_executor(
+    *,
+    enabled_channels: tuple[str, ...],
+    rerank_enabled: bool = False,
+) -> SpanExecutor:
+    detector = ParserDetector(
+        registry=build_default_parser_registry(),
+        default_parser=PlainTextParser(),
+    )
+    return SpanExecutor(
+        parser_detector=detector,
+        reranker=HeuristicReranker(),
+        projection=DeterministicSemanticProjection(ProjectionConfig(hash_features=64, dim=16)),
+        enabled_channels=enabled_channels,
+        rerank_enabled=rerank_enabled,
+    )
+
+
 def test_span_executor_returns_exact_phase_results_with_channels() -> None:
     executor = _executor()
     documents = [
@@ -47,6 +65,47 @@ def test_span_executor_returns_exact_phase_results_with_channels() -> None:
     assert top.primary_span is not None
     assert top.primary_span["highlights"]
     assert top.primary_span["offset_basis"] == "source"
+
+
+def test_span_executor_can_isolate_exact_channel_without_rerank() -> None:
+    executor = _isolated_executor(enabled_channels=("exact",), rerank_enabled=False)
+    documents = [
+        SearchDocument(
+            file_name="notes.txt",
+            content="Acme logged literal marker orchid relay for review.",
+            media_type="text/plain",
+            metadata={"source_id": "raw-1", "source_origin": "raw", "source_type": "raw"},
+        )
+    ]
+
+    outcome = executor.execute(query="orchid relay", documents=documents, top_k=3)
+
+    assert outcome.execution["active_channels"] == ["exact"]
+    assert outcome.execution["phase_counts"]["reranked_results"] == 0
+    assert outcome.final_results == outcome.proxy_results
+    assert "exact" in outcome.final_results[0].channels
+    assert "semantic" not in outcome.final_results[0].channels
+
+
+def test_span_executor_semantic_only_does_not_backfill_exact_highlights() -> None:
+    executor = _isolated_executor(enabled_channels=("semantic",), rerank_enabled=False)
+    documents = [
+        SearchDocument(
+            file_name="ticket.txt",
+            content="Customer wrote avatar crop issue; agent called it image trim.",
+            media_type="text/plain",
+            metadata={"source_id": "raw-semantic", "source_origin": "raw", "source_type": "raw"},
+        )
+    ]
+
+    outcome = executor.execute(query="avatar crop issue", documents=documents, top_k=3)
+
+    assert outcome.execution["active_channels"] == ["semantic"]
+    assert outcome.proxy_results
+    span = outcome.proxy_results[0].primary_span
+    assert span is not None
+    assert span["highlights"] == []
+    assert outcome.proxy_results[0].spans is None
 
 
 def test_span_executor_non_exact_candidates_use_context_span() -> None:
@@ -184,6 +243,8 @@ def test_span_executor_respects_rerank_budget_and_partial_flags() -> None:
     assert len(outcome.reranked_results) <= 5
     assert outcome.execution["partial"] is True
     assert outcome.execution["window_count"] >= outcome.execution["scanned_windows"]
+    assert outcome.final_results[0].metadata["retrieval_partial"] is True
+    assert outcome.final_results[0].metadata["completion_reason"] == "partial_scan_limit"
 
 
 def test_source_windows_keep_neighbor_ids_for_span_expansion() -> None:
