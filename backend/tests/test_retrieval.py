@@ -181,6 +181,255 @@ def test_retriever_flag_rejects_unknown() -> None:
 
 
 # ---------------------------------------------------------------------------
+# SpsRetriever tests — BM25 + semantic projection fusion
+# ---------------------------------------------------------------------------
+
+def _sps_chunks(contents: list[tuple[str, str]]):
+    """Build one chunk per (content, source_name) pair."""
+    chunks = []
+    for content, name in contents:
+        chunks.extend(
+            chunk_document(ParsedDocument(content=content, source_name=name), max_tokens=20)
+        )
+    return chunks
+
+
+def test_sps_retriever_recalls_synonym() -> None:
+    from app.retrieval.sps import SpsRetriever
+
+    chunks = _sps_chunks([
+        ("customer charged duplicate", "charge.txt"),
+        ("weather forecast tomorrow", "weather.txt"),
+        ("refund issued successfully", "refund.txt"),
+    ])
+    retriever = SpsRetriever(
+        projection=DeterministicSemanticProjection(),
+        cache=None,
+        alpha=0.4,
+    )
+
+    # "billed twice" has zero lexical overlap with any chunk — BM25 alone returns nothing.
+    bm25_only = BM25Index(chunks).search("billed twice", top_k=3)
+    assert not bm25_only
+
+    hits = retriever.search("billed twice", chunks, top_k=3, workspace_id="ws-syn")
+    assert hits, "SPS should surface the synonym chunk"
+    assert hits[0].chunk.source_name == "charge.txt"
+
+
+def test_sps_retriever_preserves_bm25_on_exact_match() -> None:
+    from app.retrieval.sps import SpsRetriever
+
+    chunks = _sps_chunks([
+        ("billing refund issue for customer", "hit.txt"),
+        ("unrelated weather report", "weather.txt"),
+        ("shipping delay at warehouse", "ship.txt"),
+    ])
+    retriever = SpsRetriever(
+        projection=DeterministicSemanticProjection(),
+        cache=None,
+        alpha=0.7,
+    )
+    hits = retriever.search("billing refund", chunks, top_k=3, workspace_id="ws-exact")
+    assert hits[0].chunk.source_name == "hit.txt"
+
+
+def test_sps_retriever_uses_embedding_cache() -> None:
+    from app.retrieval.sps import SpsRetriever
+
+    class _CountingProjection:
+        def __init__(self) -> None:
+            self._inner = DeterministicSemanticProjection()
+            self.encode_chunks_calls = 0
+
+        def encode_query(self, query):
+            return self._inner.encode_query(query)
+
+        def encode_chunks(self, chunks):
+            self.encode_chunks_calls += 1
+            return self._inner.encode_chunks(chunks)
+
+        def score(self, qv, cv):
+            return self._inner.score(qv, cv)
+
+    chunks = _sps_chunks([
+        ("customer charged duplicate", "a.txt"),
+        ("refund issued", "b.txt"),
+    ])
+    proj = _CountingProjection()
+    cache = BM25IndexCache(ttl=60.0, max_entries=5)
+    retriever = SpsRetriever(projection=proj, cache=cache, alpha=0.5)  # type: ignore[arg-type]
+
+    retriever.search("billed twice", chunks, top_k=2, workspace_id="ws-cache")
+    retriever.search("double charge", chunks, top_k=2, workspace_id="ws-cache")
+
+    assert proj.encode_chunks_calls == 1, (
+        f"encode_chunks should be cached across queries; called {proj.encode_chunks_calls}x"
+    )
+
+
+def test_sps_retriever_empty_inputs() -> None:
+    from app.retrieval.sps import SpsRetriever
+
+    retriever = SpsRetriever(projection=DeterministicSemanticProjection(), cache=None)
+    assert retriever.search("", _sps_chunks([("x", "a.txt")]), top_k=3, workspace_id="ws") == []
+    assert retriever.search("query", [], top_k=3, workspace_id="ws") == []
+
+
+# ---------------------------------------------------------------------------
+# Negation / polarity feature tests
+# ---------------------------------------------------------------------------
+
+def test_negation_augmenter_injects_synthetic_tokens() -> None:
+    from app.retrieval.sparse_projection import _augment_with_polarity
+
+    out = _augment_with_polarity("the refund was denied by policy")
+    assert "DENIED_refund" in out
+    assert "DENIED_policy" in out
+    assert "refund was denied by policy" in out  # original preserved
+
+
+def test_negation_augmenter_noop_without_matches() -> None:
+    from app.retrieval.sparse_projection import _augment_with_polarity
+
+    text = "the cat sat on the mat"
+    assert _augment_with_polarity(text) == text
+
+
+def test_negation_separates_opposite_polarity() -> None:
+    proj = DeterministicSemanticProjection()
+    denied = proj.encode_query("the refund was denied")
+    approved = proj.encode_query("the refund was approved")
+    rejected = proj.encode_query("the refund was rejected")
+
+    cos_opposite = float(denied @ approved)
+    cos_same = float(denied @ rejected)
+
+    assert cos_same > cos_opposite, (
+        f"Expected denied~rejected ({cos_same:.3f}) > denied~approved ({cos_opposite:.3f})"
+    )
+
+
+def test_sentence_scorer_selects_most_relevant_sentence() -> None:
+    from app.retrieval.sentence_scorer import find_best_sentence
+
+    chunk_text = (
+        "The weather report mentioned rain for tomorrow. "
+        "The second refund was denied due to policy violations. "
+        "Shipping updates will follow later this week."
+    )
+    proj = DeterministicSemanticProjection()
+    result = find_best_sentence("refund denied", chunk_text, proj)
+    assert result is not None
+    start, end = result
+    snippet = chunk_text[start:end]
+    assert "denied" in snippet.lower()
+    assert "refund" in snippet.lower()
+
+
+def test_sentence_scorer_noop_for_single_sentence() -> None:
+    from app.retrieval.sentence_scorer import find_best_sentence
+
+    proj = DeterministicSemanticProjection()
+    assert find_best_sentence("anything", "one short sentence here", proj) is None
+
+
+def test_sentence_scorer_preserves_offsets() -> None:
+    from app.retrieval.sentence_scorer import find_best_sentence
+
+    chunk_text = "First unrelated line.\nRefund was denied for policy reason.\nThird line."
+    proj = DeterministicSemanticProjection()
+    result = find_best_sentence("refund denied", chunk_text, proj)
+    assert result is not None
+    start, end = result
+    assert chunk_text[start:end] == "Refund was denied for policy reason."
+
+
+def test_exact_phrase_retriever_finds_literal_substring() -> None:
+    from app.retrieval.exact_phrase import ExactPhraseRetriever
+
+    chunks = _sps_chunks([
+        ("system reported error code 503 gateway timeout", "log1.txt"),
+        ("unrelated weather forecast", "weather.txt"),
+    ])
+    retriever = ExactPhraseRetriever()
+    hits = retriever.search(
+        "error code 503", chunks, top_k=5, workspace_id="ws-phrase"
+    )
+    assert hits
+    assert hits[0].chunk.source_name == "log1.txt"
+    assert "phrase" in hits[0].channels
+
+
+def test_multihead_rrf_union_combines_heads() -> None:
+    from app.retrieval.exact_phrase import ExactPhraseRetriever
+    from app.retrieval.retriever import Bm25Retriever, MultiHeadRetriever
+    from app.retrieval.sps import SpsRetriever
+
+    chunks = _sps_chunks([
+        ("customer charged duplicate", "synonym.txt"),
+        ("error code 503 gateway timeout", "phrase.txt"),
+        ("billing refund issue", "lexical.txt"),
+        ("unrelated shipping note", "noise.txt"),
+    ])
+    retriever = MultiHeadRetriever(
+        heads=[
+            ("sps", SpsRetriever(projection=DeterministicSemanticProjection(), cache=None)),
+            ("bm25", Bm25Retriever()),
+            ("phrase", ExactPhraseRetriever()),
+        ],
+    )
+    hits = retriever.search(
+        "billed twice", chunks, top_k=4, workspace_id="ws-multi"
+    )
+    assert hits
+    # Synonym chunk must be surfaced — pure BM25 would miss it.
+    ids = [h.chunk.source_name for h in hits]
+    assert "synonym.txt" in ids
+    # Each hit has channels populated.
+    assert all(h.channels for h in hits)
+
+
+def test_multihead_empty_chunks_returns_empty() -> None:
+    from app.retrieval.retriever import MultiHeadRetriever
+
+    retriever = MultiHeadRetriever(heads=[])
+    assert retriever.search("x", [], top_k=5, workspace_id="ws") == []
+
+
+def test_budget_hint_thorough_increases_candidate_limit() -> None:
+    from app.retrieval.planner import build_query_plan
+
+    baseline = build_query_plan(query="q", top_k=10, window_count=500)
+    thorough = build_query_plan(
+        query="q", top_k=10, window_count=500, budget_hint="thorough"
+    )
+    assert thorough.candidate_limit > baseline.candidate_limit
+    assert thorough.rerank_limit >= baseline.rerank_limit
+
+
+def test_budget_hint_fast_shrinks_candidate_limit() -> None:
+    from app.retrieval.planner import build_query_plan
+
+    baseline = build_query_plan(query="q", top_k=10, window_count=500)
+    fast = build_query_plan(
+        query="q", top_k=10, window_count=500, budget_hint="fast"
+    )
+    assert fast.candidate_limit < baseline.candidate_limit
+    assert fast.rerank_limit < baseline.rerank_limit
+
+
+def test_negation_preserves_unrelated_text_similarity() -> None:
+    proj = DeterministicSemanticProjection()
+    a = proj.encode_query("the weather is sunny today")
+    b = proj.encode_query("pizza delivery route optimization")
+    cos = float(a @ b)
+    # Unrelated text should be near-orthogonal (low cosine), augmenter must not
+    # spuriously push them together.
+    assert cos < 0.3
+
+
+# ---------------------------------------------------------------------------
 # Query trie tests
 # ---------------------------------------------------------------------------
 

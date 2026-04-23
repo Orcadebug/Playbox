@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
@@ -95,6 +96,62 @@ def _canonical_tokens(text: str) -> list[str]:
 def _stable_index(token: str, dim: int) -> int:
     digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
     return int.from_bytes(digest, byteorder="big", signed=False) % dim
+
+
+_NEG_VERBS = frozenset({
+    "not", "no", "never", "cannot", "cant", "wont", "didnt", "doesnt", "wasnt",
+    "werent", "isnt", "arent", "shouldnt", "couldnt", "wouldnt",
+})
+_DENY_VERBS = frozenset({
+    "denied", "rejected", "failed", "refused", "blocked", "unable", "error",
+    "errors", "broken", "missing", "invalid",
+})
+_POS_VERBS = frozenset({
+    "approved", "succeeded", "resolved", "fixed", "completed", "accepted",
+    "confirmed", "granted", "passed",
+})
+
+_NEGATION_ENABLED = os.environ.get("WAVER_SPS_NEGATION", "true").lower() not in (
+    "false", "0", "no",
+)
+
+
+def _augment_with_polarity(text: str) -> str:
+    """Inject sentence-level polarity markers as synthetic tokens.
+
+    When a sentence contains a negation ("not", "never"), denial verb ("denied",
+    "failed"), or positive verb ("approved", "resolved"), stamp every content
+    token with a polarity prefix. "refund denied" → adds "DENIED_refund";
+    "refund approved" → adds "POS_refund". Opposite-polarity sentences then
+    land in disjoint hash buckets instead of colliding on the shared nouns.
+    """
+    if not _NEGATION_ENABLED:
+        return text
+    lower_tokens = [t for t in re.findall(r"\w+", text.lower())]
+    if not lower_tokens:
+        return text
+
+    prefixes: list[str] = []
+    token_set = set(lower_tokens)
+    if token_set & _NEG_VERBS:
+        prefixes.append("NEG_")
+    if token_set & _DENY_VERBS:
+        prefixes.append("DENIED_")
+    if token_set & _POS_VERBS:
+        prefixes.append("POS_")
+    if not prefixes:
+        return text
+
+    polarity_words = _NEG_VERBS | _DENY_VERBS | _POS_VERBS
+    content = [
+        t for t in lower_tokens
+        if t not in polarity_words and len(t) > 2
+    ]
+    if not content:
+        return text
+
+    synthetic = [f"{p}{t}" for p in prefixes for t in content]
+    return f"{text} {' '.join(synthetic)}"
 
 
 def _config_from_json(raw: Any) -> ProjectionConfig:
@@ -199,7 +256,8 @@ class SparseProjection:
         raise ValueError(f"Projection matrix shape {shape} does not match {expected}")
 
     def _project(self, texts: Sequence[str]) -> np.ndarray:
-        hashed = self._vectorizer.transform(texts).astype(np.float32)
+        augmented_texts = [_augment_with_polarity(t) for t in texts]
+        hashed = self._vectorizer.transform(augmented_texts).astype(np.float32)
         if self._matrix_is_transposed:
             projected = hashed @ self.W.T
         else:
@@ -236,7 +294,8 @@ class DeterministicSemanticProjection:
 
     def _embed(self, text: str) -> np.ndarray:
         vector = np.zeros(self.config.dim, dtype=np.float32)
-        tokens = _canonical_tokens(text)
+        augmented = _augment_with_polarity(text)
+        tokens = _canonical_tokens(augmented)
         if not tokens:
             return vector
 

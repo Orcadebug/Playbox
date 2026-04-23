@@ -5,7 +5,7 @@ import math
 import re
 from collections import Counter, defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.schemas.documents import Chunk
 
@@ -97,6 +97,8 @@ class BM25ScoredChunk:
     score: float
     bm25_score: float | None = None
     rerank_score: float | None = None
+    channels: list[str] = field(default_factory=list)
+    channel_scores: dict[str, float] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

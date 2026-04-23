@@ -16,7 +16,7 @@ from app.config import Settings
 from app.models import Source
 from app.retrieval.bm25_cache import BM25IndexCache
 from app.retrieval.pipeline import RetrievalPipeline
-from app.retrieval.retriever import Bm25Retriever, Retriever
+from app.retrieval.retriever import Bm25Retriever, MultiHeadRetriever, Retriever
 from app.retrieval.span_executor import SpanExecutor
 from app.retrieval.sparse_projection import (
     DeterministicSemanticProjection,
@@ -45,13 +45,40 @@ def _build_retriever(settings: Settings, bm25_cache: BM25IndexCache) -> Retrieve
             use_stemming=settings.bm25_use_stemming,
             use_stopwords=settings.bm25_use_stopwords,
         )
+    if settings.waver_retriever == "sps":
+        from app.retrieval.exact_phrase import ExactPhraseRetriever  # noqa: PLC0415
+        from app.retrieval.sps import SpsRetriever  # noqa: PLC0415
+
+        projection_config = ProjectionConfig(
+            hash_features=settings.projection_hash_features,
+            dim=settings.projection_dim,
+        )
+        sps = SpsRetriever(
+            cache=bm25_cache,
+            projection=load_projection(settings.projection_model_path, projection_config),
+            alpha=settings.waver_sps_alpha,
+            candidate_multiplier=settings.waver_sps_candidate_multiplier,
+            use_stemming=settings.bm25_use_stemming,
+            use_stopwords=settings.bm25_use_stopwords,
+        )
+        if not settings.waver_multihead:
+            return sps
+        bm25 = Bm25Retriever(
+            cache=bm25_cache,
+            use_stemming=settings.bm25_use_stemming,
+            use_stopwords=settings.bm25_use_stopwords,
+        )
+        return MultiHeadRetriever(
+            heads=[
+                ("sps", sps),
+                ("bm25", bm25),
+                ("phrase", ExactPhraseRetriever()),
+            ],
+            rrf_k=settings.waver_rrf_k,
+        )
     if settings.waver_retriever == "cortical":
         from app.retrieval.cortical import CorticalRetriever, default_trie_builder  # noqa: PLC0415
         from app.retrieval.diffusion import DiffusionConfig  # noqa: PLC0415
-        from app.retrieval.sparse_projection import (  # noqa: PLC0415
-            ProjectionConfig,
-            load_projection,
-        )
 
         projection_config = ProjectionConfig(
             hash_features=settings.projection_hash_features,
@@ -106,6 +133,7 @@ def _get_pipeline() -> RetrievalPipeline:
             retriever=_build_retriever(settings, _bm25_cache),
             bm25_candidates=_pipeline_candidate_budget(settings),
             confidence_threshold=settings.confidence_threshold,
+            projection=_get_projection(),
         )
     return _pipeline
 
@@ -225,6 +253,7 @@ class SearchService:
         connector_configs: list[dict[str, Any]] | None = None,
         include_stored_sources: bool = True,
         answer_mode: str = "off",
+        budget_hint: str = "auto",
     ) -> dict[str, Any]:
         loaded = await self._load_documents(
             workspace_id=workspace_id,
@@ -239,6 +268,7 @@ class SearchService:
             documents=loaded.documents,
             top_k=top_k,
             cacheable=loaded.cacheable,
+            budget_hint=budget_hint,
         )
         results = attach_citation_labels([self._serialize_result(r) for r in outcome.final_results])
         answer = None
@@ -267,6 +297,7 @@ class SearchService:
         connector_configs: list[dict[str, Any]] | None = None,
         include_stored_sources: bool = True,
         answer_mode: str = "off",
+        budget_hint: str = "auto",
     ) -> AsyncIterator[str]:
         """Async generator yielding SSE-formatted data lines with search results."""
         loaded = await self._load_documents(
@@ -283,6 +314,7 @@ class SearchService:
                 documents=loaded.documents,
                 top_k=top_k,
                 cacheable=loaded.cacheable,
+                budget_hint=budget_hint,
             )
             sources_loaded_payload = {
                 "event": "sources_loaded",
