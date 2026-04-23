@@ -25,6 +25,17 @@ Waver can currently:
   large corpus was fully scanned.
 - Stream retrieval phases over SSE: `sources_loaded`, `exact_results`,
   `proxy_results`, `reranked_results`, optional `answer_delta`, and `done`.
+- Use SPS (Semantic Projection Search) as the default retriever: fuses BM25 lexical
+  scoring with a sparse projection cosine at query time, zero corpus preprocessing
+  required.
+- Run multi-head retrieval (SPS + BM25 + exact phrase) fused via Reciprocal Rank
+  Fusion (RRF), so synonyms, exact tokens, and quoted phrases all have dedicated signal.
+- Apply negation/polarity feature injection so "refund denied" and "refund approved"
+  land in disjoint score space rather than colliding on shared nouns.
+- Refine `primary_span` to sentence level: after reranking, the best sentence inside
+  the top chunk is scored and used as the highlight anchor instead of the full chunk.
+- Adapt the candidate budget per query: expand the retrieval pool when score spread is
+  flat (ambiguous queries), contract when a high-confidence hit is clear.
 - Use exact matching, semantic-proxy scoring, structure scoring, and reranking inside
   a query-time span executor.
 - Use a BM25 cache only as an optimization for stored-only searches.
@@ -63,15 +74,24 @@ Key backend areas:
   and source management.
 - `backend/app/services/search.py`: request orchestration, raw-source loading,
   connector loading, streaming envelopes, result serialization, and optional answers.
+  Wires the SPS retriever, multi-head union, and projection singleton into the pipeline.
 - `backend/app/services/sources.py`: saved-source upload, parsing, listing, deletion,
   and cache invalidation.
 - `backend/app/parsers/`: format-specific parsers and parser detection.
-- `backend/app/retrieval/`: BM25 cache, source windows, planner, channels, span
-  executor, rerankers, sparse projection, cortical retriever experiments, and evals.
+- `backend/app/retrieval/`: retrieval stack —
+  - `sps.py`: `SpsRetriever` — BM25 + sparse projection cosine fusion.
+  - `retriever.py`: `MultiHeadRetriever` — RRF fusion across named retriever heads.
+  - `exact_phrase.py`: `ExactPhraseRetriever` — binary substring match on query n-grams.
+  - `sparse_projection.py`: `SparseProjection`, `DeterministicSemanticProjection`,
+    polarity feature injection (`_augment_with_polarity`).
+  - `sentence_scorer.py`: sentence-level span refinement using the loaded projection.
+  - `pipeline.py`: `RetrievalPipeline` — adaptive budget, reranking, span building.
+  - BM25 cache, source windows, planner, channels, span executor, and evals.
 - `backend/app/answer/`: optional source-grounded answer generation through
   OpenRouter when `OPENROUTER_API_KEY` is configured.
 - `backend/tests/`: pytest coverage for parsers, retrieval, search service behavior,
-  source execution, planner behavior, API-key work in progress, and promise evals.
+  source execution, planner behavior, negation/polarity, sentence scorer, adaptive
+  budget, multi-head RRF, API-key work in progress, and promise evals.
 
 Frontend status:
 
@@ -99,6 +119,7 @@ Search accepts:
 - `connector_configs`
 - `include_stored_sources`
 - `answer_mode`: `"off"` or `"llm"`
+- `budget_hint`: `"auto"` (default), `"fast"` (skip expansion), or `"thorough"` (always expand candidate pool)
 
 Saved-source endpoints:
 
@@ -115,15 +136,16 @@ API-key behavior as beta infrastructure rather than the core retrieval contract.
 
 ```json
 {
-  "query": "billing refund",
+  "query": "refund was not approved",
   "top_k": 8,
+  "budget_hint": "auto",
   "include_stored_sources": true,
   "answer_mode": "off",
   "raw_sources": [
     {
       "id": "scratchpad",
-      "name": "Raw scratchpad",
-      "content": "Acme asked for a billing refund after a duplicate charge.",
+      "name": "notes.txt",
+      "content": "First refund was approved after review.\nSecond refund was denied due to policy.\nUnrelated shipping note.",
       "media_type": "text/plain",
       "source_type": "raw"
     }
@@ -143,11 +165,18 @@ API-key behavior as beta infrastructure rather than the core retrieval contract.
 }
 ```
 
+Expected behaviour: rank 1 is the "denied" sentence, not the "approved" sentence.
+`primary_span.text` is the single relevant sentence; `channels` shows which retriever
+heads contributed.
+
 The response is retrieval-first:
 
 - `results`: ranked source results.
-- `results[].primary_span`: the best span for the result.
-- `results[].matched_spans`: additional matched spans.
+- `results[].primary_span`: the best span — sentence-level when the projection is
+  available, chunk-level otherwise.
+- `results[].matched_spans`: additional matched spans (chunk-level context preserved).
+- `results[].channels`: which retriever heads surfaced this result (e.g. `["sps", "phrase"]`).
+- `results[].channel_scores`: per-head raw scores before RRF fusion.
 - `results[].source_origin`: `stored`, `raw`, or `connector`.
 - `results[].metadata`: phase/channel/source metadata.
 - `sources`: unique source summaries.
@@ -197,10 +226,22 @@ Important environment variables:
 - `OPENROUTER_API_KEY`: enables non-fallback LLM answers.
 - `CORS_ORIGINS` and `CORS_ORIGIN_REGEX`: frontend origins allowed by the backend.
 - `NEXT_PUBLIC_API_BASE_URL`: frontend-to-backend URL.
-- `WAVER_RETRIEVER`: `bm25` by default; cortical retrieval code exists as an
-  experimental path.
-- `WAVER_MODEL_DIR`, `WAVER_RERANKER_MODEL`, `WAVER_RETRIEVER`, and projection settings:
-  model/config knobs for retrieval experiments.
+- `WAVER_RETRIEVER`: `sps` by default (BM25 + sparse projection fusion with multi-head
+  RRF). Set to `bm25` for pure lexical retrieval or `cortical` for the experimental
+  cortical path.
+- `WAVER_SPS_ALPHA`: weight of the projection cosine score in SPS fusion (default `0.6`).
+- `WAVER_MULTIHEAD`: enables RRF fusion across SPS, BM25, and exact-phrase heads
+  (default `true`).
+- `WAVER_RRF_K`: RRF damping constant (default `60`).
+- `WAVER_ADAPTIVE_BUDGET`: expand candidate pool when score spread is flat (default `true`).
+- `WAVER_BUDGET_SPREAD_THRESHOLD`: spread below which budget expands (default `0.15`).
+- `WAVER_SPS_NEGATION`: polarity feature injection — separates negated from affirmed
+  queries (default `true`).
+- `PROJECTION_MODEL_PATH`: path to a trained `projection.npz` matrix. If absent, the
+  built-in deterministic semantic projection (alias dict + stable hashing) is used — no
+  model artifact required for local development.
+- `WAVER_MODEL_DIR`, `WAVER_RERANKER_MODEL`, and reranker settings: cross-encoder
+  reranker config knobs.
 - `MAX_UPLOAD_BYTES`: upload size ceiling.
 
 ## Promise Eval
