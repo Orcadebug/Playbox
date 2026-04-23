@@ -1,4 +1,5 @@
 mod bm25;
+mod mrl;
 mod phrase;
 mod semantic;
 mod simd_ngram;
@@ -8,8 +9,9 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use crate::bm25::RustBm25Index;
+use crate::mrl::mrl_encode_impl;
 use crate::phrase::phrase_search_impl;
-use crate::semantic::{mrl_encode_impl, splade_encode_impl};
+use crate::semantic::splade_encode_impl;
 use crate::simd_ngram::prefilter_windows_impl;
 
 type HeadPayload = Vec<(String, Vec<(String, f64, Option<f64>)>)>;
