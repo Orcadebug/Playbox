@@ -5,6 +5,8 @@ from typing import Any, Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+RustBm25Mode = Literal["python", "shadow", "rust"]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -27,6 +29,7 @@ class Settings(BaseSettings):
     bm25_cache_max_entries: int = 10
     bm25_use_stemming: bool = True
     bm25_use_stopwords: bool = True
+    waver_rust_bm25_mode: RustBm25Mode = "python"
     waver_retriever: Literal["bm25", "sps", "cortical"] = "sps"
     waver_sps_alpha: float = 0.6
     waver_sps_candidate_multiplier: int = 3
@@ -38,6 +41,10 @@ class Settings(BaseSettings):
     waver_rrf_k: int = 60
     waver_rust_rrf: bool = False
     waver_rust_rrf_shadow: bool = False
+    waver_tiny_max_bytes: int = 2 * 1024 * 1024
+    waver_medium_max_bytes: int = 32 * 1024 * 1024
+    waver_payload_cache_ttl: float = 300.0
+    waver_payload_cache_max_entries: int = 10
     waver_candidate_cap: int = 2000
     waver_trie_max_patterns: int = 2000
     waver_trie_phrase_ngram: int = 2

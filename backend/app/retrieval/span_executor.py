@@ -17,9 +17,11 @@ from app.retrieval.channels import (
 )
 from app.retrieval.planner import QueryPlan, build_query_plan
 from app.retrieval.reranker import Reranker
+from app.retrieval.rust_core import get_attr
 from app.retrieval.source_executor import SourceWindow, build_source_windows_from_documents
 from app.retrieval.sparse_projection import (
     DeterministicSemanticProjection,
+    MrlProjection,
     NullProjection,
     SparseProjection,
 )
@@ -146,6 +148,54 @@ def _build_context_span(
     }
 
 
+def _byte_ngrams(text: str, size: int = 3) -> set[bytes]:
+    raw = text.lower().encode("utf-8", errors="ignore")
+    if len(raw) < size:
+        return {raw} if raw else set()
+    return {raw[index : index + size] for index in range(0, len(raw) - size + 1)}
+
+
+def _python_prefilter_windows(
+    query: str,
+    windows: Sequence[SourceWindow],
+    *,
+    limit: int,
+) -> list[SourceWindow]:
+    query_ngrams = _byte_ngrams(query)
+    ranked = []
+    for window in windows:
+        grams = _byte_ngrams(window.text)
+        overlap = len(query_ngrams & grams)
+        if overlap <= 0:
+            continue
+        ranked.append((overlap, window.window_id, window))
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    return [window for _, _, window in ranked[:limit]]
+
+
+def _prefilter_windows(
+    query: str,
+    windows: Sequence[SourceWindow],
+    *,
+    limit: int,
+) -> list[SourceWindow]:
+    rust_prefilter = get_attr("prefilter_windows")
+    if callable(rust_prefilter):
+        try:
+            rows = rust_prefilter(
+                query,
+                [(window.window_id, window.text) for window in windows],
+                limit,
+            )
+            by_id = {window.window_id: window for window in windows}
+            filtered = [by_id[str(window_id)] for window_id, _ in rows if str(window_id) in by_id]
+            if filtered:
+                return filtered
+        except Exception:
+            pass
+    return _python_prefilter_windows(query, windows, limit=limit)
+
+
 @dataclass(slots=True)
 class WindowCandidate:
     window: SourceWindow
@@ -177,12 +227,14 @@ class SpanExecutor:
         parser_detector: ParserDetector,
         reranker: Reranker,
         projection: SparseProjection | DeterministicSemanticProjection | NullProjection,
+        mrl_projection: MrlProjection | None = None,
         enabled_channels: Iterable[str] | None = None,
         rerank_enabled: bool = True,
     ) -> None:
         self.parser_detector = parser_detector
         self.reranker = reranker
         self.projection = projection
+        self.mrl_projection = mrl_projection
         requested = set(enabled_channels) if enabled_channels is not None else set(_CHANNEL_ORDER)
         unknown = requested - set(_CHANNEL_ORDER)
         if unknown:
@@ -217,11 +269,17 @@ class SpanExecutor:
             query=query,
             top_k=top_k,
             window_count=len(windows),
+            bytes_loaded=bytes_loaded,
             source_origins=origins,
             cacheable=cacheable,
             budget_hint=budget_hint,  # type: ignore[arg-type]
         )
-        scanned_windows = windows[: plan.scan_limit]
+        stage0_applied = False
+        if plan.tier == "tiny" or len(windows) <= plan.scan_limit:
+            scanned_windows = windows[: plan.scan_limit]
+        else:
+            stage0_applied = True
+            scanned_windows = _prefilter_windows(query, windows, limit=plan.scan_limit)
 
         if not scanned_windows:
             elapsed_ms = round((perf_counter() - started_at) * 1000.0, 3)
@@ -245,6 +303,8 @@ class SpanExecutor:
                     "reranked_results": 0,
                     "final_results": 0,
                 },
+                "stage0_applied": stage0_applied,
+                "mrl_applied": False,
             }
             return SpanExecutionOutcome(
                 plan=plan,
@@ -336,7 +396,37 @@ class SpanExecutor:
         limited = candidates[: plan.candidate_limit]
         exact_candidates = [candidate for candidate in limited if candidate.exact_score > 0][:top_k]
         proxy_candidates = limited[:top_k]
-        shortlist = limited[: plan.rerank_limit]
+        shortlist = limited
+        mrl_applied = False
+        if (
+            plan.tier == "huge"
+            and self.mrl_projection is not None
+            and len(shortlist) > plan.rerank_limit
+        ):
+            try:
+                mrl_applied = True
+                query_vec = self.mrl_projection.encode_query(query)
+                mrl_chunks = [
+                    Chunk(
+                        chunk_id=candidate.window.window_id,
+                        content=candidate.window.text,
+                        source_name=candidate.window.source_name,
+                        metadata=dict(candidate.window.metadata),
+                        location=candidate.window.location,
+                        token_count=max(1, len(candidate.window.text.split())),
+                    )
+                    for candidate in shortlist
+                ]
+                chunk_vecs = self.mrl_projection.encode_chunks(mrl_chunks)
+                mrl_scores = self.mrl_projection.score(query_vec, chunk_vecs)
+                ranked_pairs = list(zip(shortlist, mrl_scores, strict=False))
+                ranked_pairs.sort(key=lambda item: (-float(item[1]), item[0].window.window_id))
+                shortlist = [candidate for candidate, _ in ranked_pairs[: plan.rerank_limit]]
+            except Exception:
+                mrl_applied = False
+                shortlist = limited[: plan.rerank_limit]
+        else:
+            shortlist = limited[: plan.rerank_limit]
 
         exact_results = [
             self._to_search_result(self._candidate_to_hit(candidate, phase="exact"), query)
@@ -401,6 +491,8 @@ class SpanExecutor:
                 "reranked_results": len(reranked_results),
                 "final_results": len(final_results),
             },
+            "stage0_applied": stage0_applied,
+            "mrl_applied": mrl_applied,
         }
 
         return SpanExecutionOutcome(

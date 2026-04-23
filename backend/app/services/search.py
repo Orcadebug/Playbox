@@ -5,6 +5,7 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -20,8 +21,11 @@ from app.retrieval.retriever import Bm25Retriever, MultiHeadRetriever, Retriever
 from app.retrieval.span_executor import SpanExecutor
 from app.retrieval.sparse_projection import (
     DeterministicSemanticProjection,
+    MrlProjection,
     ProjectionConfig,
     SparseProjection,
+    SpladeProjection,
+    load_best_projection,
     load_projection,
 )
 from app.schemas.search import SearchDocument
@@ -34,7 +38,8 @@ _log = logging.getLogger(__name__)
 
 _bm25_cache: BM25IndexCache | None = None
 _pipeline: RetrievalPipeline | None = None
-_projection: SparseProjection | DeterministicSemanticProjection | None = None
+_projection: SparseProjection | DeterministicSemanticProjection | SpladeProjection | None = None
+_mrl_projection: MrlProjection | None = None
 _SECRET_MARKERS = ("token", "secret", "password", "key", "credential")
 
 
@@ -44,6 +49,7 @@ def _build_retriever(settings: Settings, bm25_cache: BM25IndexCache) -> Retrieve
             cache=bm25_cache,
             use_stemming=settings.bm25_use_stemming,
             use_stopwords=settings.bm25_use_stopwords,
+            rust_mode=settings.waver_rust_bm25_mode,
         )
     if settings.waver_retriever == "sps":
         from app.retrieval.exact_phrase import ExactPhraseRetriever  # noqa: PLC0415
@@ -55,11 +61,16 @@ def _build_retriever(settings: Settings, bm25_cache: BM25IndexCache) -> Retrieve
         )
         sps = SpsRetriever(
             cache=bm25_cache,
-            projection=load_projection(settings.projection_model_path, projection_config),
+            projection=load_best_projection(
+                model_dir=Path(settings.model_dir),
+                projection_model_path=settings.projection_model_path,
+                config=projection_config,
+            ),
             alpha=settings.waver_sps_alpha,
             candidate_multiplier=settings.waver_sps_candidate_multiplier,
             use_stemming=settings.bm25_use_stemming,
             use_stopwords=settings.bm25_use_stopwords,
+            rust_mode=settings.waver_rust_bm25_mode,
         )
         if not settings.waver_multihead:
             return sps
@@ -67,6 +78,7 @@ def _build_retriever(settings: Settings, bm25_cache: BM25IndexCache) -> Retrieve
             cache=bm25_cache,
             use_stemming=settings.bm25_use_stemming,
             use_stopwords=settings.bm25_use_stopwords,
+            rust_mode=settings.waver_rust_bm25_mode,
         )
         return MultiHeadRetriever(
             heads=[
@@ -125,8 +137,8 @@ def _get_pipeline() -> RetrievalPipeline:
 
         settings = get_settings()
         _bm25_cache = BM25IndexCache(
-            ttl=settings.bm25_cache_ttl,
-            max_entries=settings.bm25_cache_max_entries,
+            ttl=settings.waver_payload_cache_ttl,
+            max_entries=settings.waver_payload_cache_max_entries,
             use_stemming=settings.bm25_use_stemming,
             use_stopwords=settings.bm25_use_stopwords,
         )
@@ -140,7 +152,7 @@ def _get_pipeline() -> RetrievalPipeline:
     return _pipeline
 
 
-def _get_projection() -> SparseProjection | DeterministicSemanticProjection:
+def _get_projection() -> SparseProjection | DeterministicSemanticProjection | SpladeProjection:
     global _projection
     if _projection is None:
         from app.config import get_settings  # noqa: PLC0415
@@ -150,7 +162,11 @@ def _get_projection() -> SparseProjection | DeterministicSemanticProjection:
             hash_features=settings.projection_hash_features,
             dim=settings.projection_dim,
         )
-        _projection = load_projection(settings.projection_model_path, config)
+        _projection = load_best_projection(
+            model_dir=Path(settings.model_dir),
+            projection_model_path=settings.projection_model_path,
+            config=config,
+        )
     return _projection
 
 
@@ -159,7 +175,26 @@ def _build_span_executor(pipeline: RetrievalPipeline) -> SpanExecutor:
         parser_detector=pipeline.parser_detector,
         reranker=pipeline.reranker,
         projection=_get_projection(),
+        mrl_projection=_get_mrl_projection(),
     )
+
+
+def _get_mrl_projection() -> MrlProjection | None:
+    global _mrl_projection
+    if _mrl_projection is None:
+        from app.config import get_settings  # noqa: PLC0415
+
+        settings = get_settings()
+        config = ProjectionConfig(
+            hash_features=settings.projection_hash_features,
+            dim=settings.projection_dim,
+        )
+        _mrl_projection = MrlProjection(
+            model_path=Path(settings.model_dir) / "mrl" / "model.onnx",
+            config=config,
+            fallback=DeterministicSemanticProjection(config),
+        )
+    return _mrl_projection
 
 
 def invalidate_workspace_cache(workspace_id: str) -> None:

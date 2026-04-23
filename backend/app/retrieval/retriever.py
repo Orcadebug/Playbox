@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -8,8 +7,10 @@ from functools import lru_cache
 from time import perf_counter
 from typing import Protocol
 
-from app.retrieval.bm25 import BM25Index, BM25ScoredChunk
-from app.retrieval.bm25_cache import BM25IndexCache
+from app.config import RustBm25Mode
+from app.retrieval.bm25 import BM25Index, BM25ScoredChunk, BM25Tokenizer
+from app.retrieval.bm25_cache import BM25IndexCache, _chunks_hash
+from app.retrieval.rust_core import get_attr
 from app.schemas.documents import Chunk
 
 _log = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ class Bm25Retriever:
     cache: BM25IndexCache | None = None
     use_stemming: bool = True
     use_stopwords: bool = True
+    rust_mode: RustBm25Mode = "python"
 
     def search(
         self,
@@ -43,8 +45,16 @@ class Bm25Retriever:
         use_cache: bool = True,
     ) -> list[BM25ScoredChunk]:
         chunk_list = list(chunks)
-        if not chunk_list:
+        if not chunk_list or not query.strip():
             return []
+
+        tokenizer = BM25Tokenizer(
+            use_stemming=self.use_stemming,
+            use_stopwords=self.use_stopwords,
+        )
+        corpus_hash = _chunks_hash(chunk_list)
+        python_hits: list[BM25ScoredChunk] | None = None
+        rust_hits: list[BM25ScoredChunk] | None = None
 
         if self.cache is not None and use_cache:
             index = self.cache.get_or_build(workspace_id, chunk_list)
@@ -54,7 +64,113 @@ class Bm25Retriever:
                 use_stemming=self.use_stemming,
                 use_stopwords=self.use_stopwords,
             )
-        return index.search(query, top_k=top_k)
+        if self.rust_mode != "rust":
+            python_hits = index.search(query, top_k=top_k)
+
+        if self.rust_mode != "python":
+            rust_hits = _search_bm25_rust(
+                query,
+                chunk_list,
+                top_k=top_k,
+                tokenizer=tokenizer,
+                cache=self.cache if use_cache else None,
+                corpus_hash=corpus_hash,
+            )
+
+        if self.rust_mode == "rust":
+            if rust_hits is not None:
+                return rust_hits
+            return python_hits if python_hits is not None else index.search(query, top_k=top_k)
+
+        if self.rust_mode == "shadow" and rust_hits is not None and python_hits is not None:
+            if _bm25_signature(python_hits) != _bm25_signature(rust_hits):
+                _log.warning(
+                    "BM25 parity mismatch (python_top=%s rust_top=%s)",
+                    [hit.chunk.chunk_id for hit in python_hits[:5]],
+                    [hit.chunk.chunk_id for hit in rust_hits[:5]],
+                )
+
+        if python_hits is None:
+            return index.search(query, top_k=top_k)
+        return python_hits
+
+
+def _bm25_signature(hits: list[BM25ScoredChunk]) -> list[tuple[str, float]]:
+    return [(hit.chunk.chunk_id, round(float(hit.score), 6)) for hit in hits]
+
+
+@lru_cache(maxsize=1)
+def _get_rust_bm25_class() -> Callable[..., object] | None:
+    value = get_attr("RustBm25Index")
+    return value if callable(value) else None
+
+
+def _build_tokenized_documents(
+    chunks: Sequence[Chunk],
+    tokenizer: BM25Tokenizer,
+) -> list[tuple[str, str]]:
+    return [
+        (
+            chunk.chunk_id,
+            " ".join(tokenizer.tokenize(chunk.text)),
+        )
+        for chunk in chunks
+    ]
+
+
+def _search_bm25_rust(
+    query: str,
+    chunks: Sequence[Chunk],
+    *,
+    top_k: int,
+    tokenizer: BM25Tokenizer,
+    cache: BM25IndexCache | None,
+    corpus_hash: str,
+) -> list[BM25ScoredChunk] | None:
+    rust_bm25 = _get_rust_bm25_class()
+    if rust_bm25 is None:
+        return None
+
+    tokenized_query = " ".join(tokenizer.tokenize(query))
+    if not tokenized_query:
+        return []
+
+    rust_index = cache.get_rust_index(corpus_hash) if cache is not None else None
+    if rust_index is None:
+        try:
+            rust_index = rust_bm25(_build_tokenized_documents(chunks, tokenizer))
+        except Exception as exc:
+            _log.warning("Rust BM25 unavailable (%s) — using Python fallback", exc)
+            return None
+        if cache is not None:
+            cache.set_rust_index(corpus_hash, rust_index)
+
+    chunk_by_id = {chunk.chunk_id: chunk for chunk in chunks}
+    try:
+        rows = rust_index.search(tokenized_query, top_k)
+    except Exception as exc:
+        _log.warning("Rust BM25 search failed (%s) — using Python fallback", exc)
+        return None
+
+    hits: list[BM25ScoredChunk] = []
+    try:
+        for chunk_id, score in rows:
+            chunk = chunk_by_id.get(str(chunk_id))
+            if chunk is None:
+                continue
+            hits.append(
+                BM25ScoredChunk(
+                    chunk=chunk,
+                    score=float(score),
+                    bm25_score=float(score),
+                    rerank_score=None,
+                )
+            )
+    except Exception as exc:
+        _log.warning("Rust BM25 payload parse failed (%s) — using Python fallback", exc)
+        return None
+    hits.sort(key=lambda item: (-item.score, item.chunk.chunk_id))
+    return hits[:top_k]
 
 
 @dataclass(slots=True)
@@ -107,13 +223,7 @@ def _rrf_fuse_python(
 
 @lru_cache(maxsize=1)
 def _get_rust_rrf_callable() -> Callable[..., object] | None:
-    try:
-        module = importlib.import_module(_RUST_RRF_MODULE)
-    except Exception as exc:
-        _log.warning("Rust RRF unavailable (%s) — using Python fallback", exc)
-        return None
-
-    rrf_fuse = getattr(module, "rrf_fuse", None)
+    rrf_fuse = get_attr("rrf_fuse")
     if not callable(rrf_fuse):
         _log.warning(
             "Rust RRF unavailable (%s.rrf_fuse missing) — using Python fallback",

@@ -1,18 +1,19 @@
 """
-Workspace-scoped BM25 index cache.
+Content-addressed BM25 and embedding cache.
 
-Caches built ``BM25Index`` objects per workspace to avoid rebuilding the index
-on every search query. Entries expire after a configurable TTL and are
-invalidated explicitly when sources are added or removed.
+Entries are keyed by a stable corpus hash derived from chunk text and offsets.
+Workspaces keep only a lightweight alias to their last-seen corpus hash so
+stored-source invalidation can forget the alias without forcing cache eviction.
 """
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import numpy as np
@@ -26,23 +27,59 @@ _log = logging.getLogger(__name__)
 @dataclass
 class _CacheEntry:
     index: BM25Index
-    content_hash: str
+    corpus_hash: str
     created_at: float = field(default_factory=time.monotonic)
     chunk_embeddings: np.ndarray | None = None
+    rust_index: object | None = None
+
+
+def _chunk_fingerprint(chunk: Chunk) -> dict[str, Any]:
+    metadata = chunk.metadata or {}
+    source_start = metadata.get(
+        "source_start",
+        metadata.get("char_start", metadata.get("byte_start")),
+    )
+    source_end = metadata.get(
+        "source_end",
+        metadata.get("char_end", metadata.get("byte_end")),
+    )
+    return {
+        "chunk_id": chunk.chunk_id,
+        "source_name": chunk.source_name,
+        "text": chunk.text,
+        "parser_name": metadata.get("parser_name"),
+        "source_start": source_start,
+        "source_end": source_end,
+        "token_start": metadata.get("token_start"),
+        "token_end": metadata.get("token_end"),
+        "page_number": getattr(chunk.location, "page_number", None),
+        "row_number": getattr(chunk.location, "row_number", None),
+        "line_number": getattr(chunk.location, "line_number", None),
+        "section": getattr(chunk.location, "section", None),
+    }
 
 
 def _chunks_hash(chunks: list[Chunk]) -> str:
-    """Stable fingerprint for a list of chunks based on their IDs."""
-    digest = hashlib.sha256("|".join(c.chunk_id for c in chunks).encode()).hexdigest()
-    return digest
+    digest = hashlib.sha256()
+    for chunk in chunks:
+        payload = json.dumps(
+            _chunk_fingerprint(chunk),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        digest.update(payload.encode("utf-8"))
+        digest.update(b"\n")
+    return digest.hexdigest()
 
 
 class BM25IndexCache:
     """
-    LRU-limited, TTL-expiring BM25 index cache keyed by workspace_id.
+    LRU-limited, TTL-expiring cache keyed by corpus hash.
 
-    Thread-safe via a single lock. Suitable for FastAPI's async + thread-pool
-    hybrid execution model since ``BM25Index.build`` is synchronous/CPU-bound.
+    Workspace ids are tracked only as aliases to the latest observed corpus hash
+    so stored-source invalidation can detach the alias without discarding a
+    reusable payload entry immediately.
     """
 
     def __init__(
@@ -57,35 +94,30 @@ class BM25IndexCache:
         self._use_stemming = use_stemming
         self._use_stopwords = use_stopwords
         self._cache: dict[str, _CacheEntry] = {}
-        self._access_order: list[str] = []  # LRU tracking (front = oldest)
+        self._access_order: list[str] = []
+        self._workspace_aliases: dict[str, str] = {}
         self._lock = threading.Lock()
 
+    def resolve_hash(self, chunks: list[Chunk]) -> str:
+        return _chunks_hash(chunks)
+
     def get_or_build(self, workspace_id: str, chunks: list[Chunk]) -> BM25Index:
-        """
-        Return a cached index if the content hash matches and TTL hasn't expired.
-        Otherwise build a fresh index, cache it, and return it.
-        """
         from app.retrieval.bm25 import BM25Index
 
-        content_hash = _chunks_hash(chunks)
+        corpus_hash = self.resolve_hash(chunks)
 
         with self._lock:
-            entry = self._cache.get(workspace_id)
+            entry = self._cache.get(corpus_hash)
             now = time.monotonic()
-
             if entry is not None:
                 age = now - entry.created_at
-                if entry.content_hash == content_hash and age < self._ttl:
-                    self._touch(workspace_id)
-                    _log.debug("BM25 cache hit for workspace %s (age=%.1fs)", workspace_id, age)
+                if age < self._ttl:
+                    self._workspace_aliases[workspace_id] = corpus_hash
+                    self._touch(corpus_hash)
+                    _log.debug("BM25 cache hit for corpus %s (age=%.1fs)", corpus_hash[:12], age)
                     return entry.index
 
-            # Build new index outside the lock to avoid blocking other threads
-            # (pass chunks by value — they're already materialised at call site)
-            pass  # fall through
-
-        # Build outside lock
-        _log.debug("Building BM25 index for workspace %s (%d chunks)", workspace_id, len(chunks))
+        _log.debug("Building BM25 index for corpus %s (%d chunks)", corpus_hash[:12], len(chunks))
         index = BM25Index(
             chunks,
             use_stemming=self._use_stemming,
@@ -93,77 +125,102 @@ class BM25IndexCache:
         )
 
         with self._lock:
-            self._set(workspace_id, _CacheEntry(index=index, content_hash=content_hash))
-
+            self._set(
+                corpus_hash,
+                _CacheEntry(index=index, corpus_hash=corpus_hash),
+            )
+            self._workspace_aliases[workspace_id] = corpus_hash
         return index
 
-    def get_embeddings(self, workspace_id: str, content_hash: str):  # type: ignore[no-untyped-def]
-        """Return cached chunk embeddings if fresh and content_hash matches, else None."""
+    def get_embeddings(self, corpus_hash: str):  # type: ignore[no-untyped-def]
         with self._lock:
-            entry = self._cache.get(workspace_id)
-            if entry is None or entry.content_hash != content_hash:
+            entry = self._cache.get(corpus_hash)
+            if entry is None:
                 return None
             if time.monotonic() - entry.created_at >= self._ttl:
                 return None
+            self._touch(corpus_hash)
             return entry.chunk_embeddings
 
-    def set_embeddings(self, workspace_id: str, content_hash: str, embeddings) -> None:  # type: ignore[no-untyped-def]
-        """Attach chunk embeddings to an existing cache entry (must match content_hash)."""
+    def set_embeddings(self, corpus_hash: str, embeddings) -> None:  # type: ignore[no-untyped-def]
         with self._lock:
-            entry = self._cache.get(workspace_id)
-            if entry is None or entry.content_hash != content_hash:
+            entry = self._cache.get(corpus_hash)
+            if entry is None:
                 return
             entry.chunk_embeddings = embeddings
+            self._touch(corpus_hash)
+
+    def get_rust_index(self, corpus_hash: str):  # type: ignore[no-untyped-def]
+        with self._lock:
+            entry = self._cache.get(corpus_hash)
+            if entry is None:
+                return None
+            if time.monotonic() - entry.created_at >= self._ttl:
+                return None
+            self._touch(corpus_hash)
+            return entry.rust_index
+
+    def set_rust_index(self, corpus_hash: str, rust_index: object) -> None:
+        with self._lock:
+            entry = self._cache.get(corpus_hash)
+            if entry is None:
+                return
+            entry.rust_index = rust_index
+            self._touch(corpus_hash)
 
     def invalidate(self, workspace_id: str) -> None:
         with self._lock:
-            if workspace_id in self._cache:
-                del self._cache[workspace_id]
-                try:
-                    self._access_order.remove(workspace_id)
-                except ValueError:
-                    pass
-                _log.debug("BM25 cache invalidated for workspace %s", workspace_id)
+            if workspace_id in self._workspace_aliases:
+                del self._workspace_aliases[workspace_id]
+                _log.debug("BM25 cache alias invalidated for workspace %s", workspace_id)
 
     def invalidate_all(self) -> None:
         with self._lock:
             self._cache.clear()
             self._access_order.clear()
+            self._workspace_aliases.clear()
 
     def snapshot(self) -> dict[str, dict[str, object]]:
-        """Return a stable, thread-safe view of cache entries for eval assertions."""
         with self._lock:
-            return {
-                workspace_id: {
-                    "content_hash": entry.content_hash,
-                    "chunk_count": len(entry.index.chunks),
-                    "access_position": self._access_order.index(workspace_id)
-                    if workspace_id in self._access_order
-                    else -1,
-                }
-                for workspace_id, entry in sorted(self._cache.items())
+            if not self._cache and not self._workspace_aliases:
+                return {}
+            aliases = {
+                workspace_id: corpus_hash
+                for workspace_id, corpus_hash in sorted(self._workspace_aliases.items())
             }
+            entries = {
+                corpus_hash: {
+                    "chunk_count": len(entry.index.chunks),
+                    "access_position": self._access_order.index(corpus_hash)
+                    if corpus_hash in self._access_order
+                    else -1,
+                    "has_embeddings": entry.chunk_embeddings is not None,
+                    "has_rust_index": entry.rust_index is not None,
+                }
+                for corpus_hash, entry in sorted(self._cache.items())
+            }
+            return {"aliases": aliases, "entries": entries}
 
-    # --- internals (must be called with lock held) ---
-
-    def _touch(self, workspace_id: str) -> None:
+    def _touch(self, corpus_hash: str) -> None:
         try:
-            self._access_order.remove(workspace_id)
+            self._access_order.remove(corpus_hash)
         except ValueError:
             pass
-        self._access_order.append(workspace_id)
+        self._access_order.append(corpus_hash)
 
-    def _set(self, workspace_id: str, entry: _CacheEntry) -> None:
-        if workspace_id in self._cache:
+    def _set(self, corpus_hash: str, entry: _CacheEntry) -> None:
+        if corpus_hash in self._cache:
             try:
-                self._access_order.remove(workspace_id)
+                self._access_order.remove(corpus_hash)
             except ValueError:
                 pass
         elif len(self._cache) >= self._max_entries:
-            # Evict least-recently-used
             lru_key = self._access_order.pop(0)
             del self._cache[lru_key]
-            _log.debug("BM25 cache evicted workspace %s (LRU)", lru_key)
+            for workspace_id, alias in list(self._workspace_aliases.items()):
+                if alias == lru_key:
+                    del self._workspace_aliases[workspace_id]
+            _log.debug("BM25 cache evicted corpus %s (LRU)", lru_key[:12])
 
-        self._cache[workspace_id] = entry
-        self._access_order.append(workspace_id)
+        self._cache[corpus_hash] = entry
+        self._access_order.append(corpus_hash)

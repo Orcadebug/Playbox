@@ -14,6 +14,7 @@ import numpy as np
 from scipy import sparse
 from sklearn.feature_extraction.text import HashingVectorizer
 
+from app.retrieval.rust_core import get_attr
 from app.schemas.documents import Chunk
 
 _log = logging.getLogger(__name__)
@@ -327,6 +328,113 @@ class NullProjection:
         return np.zeros(len(chunk_vecs), dtype=np.float32)
 
 
+@dataclass(slots=True)
+class SpladeProjection:
+    model_path: Path | None
+    config: ProjectionConfig = field(default_factory=ProjectionConfig)
+    fallback: DeterministicSemanticProjection = field(
+        default_factory=DeterministicSemanticProjection
+    )
+    using_fallback: bool = False
+    fallback_reason: str | None = None
+
+    def encode_query(self, query: str) -> np.ndarray:
+        return self._encode([query], is_query=True)[0]
+
+    def encode_chunks(self, chunks: Sequence[Chunk]) -> np.ndarray:
+        if not chunks:
+            return np.zeros((0, self.config.dim), dtype=np.float32)
+        return self._encode([chunk.text for chunk in chunks], is_query=False)
+
+    def score(self, query_vec: np.ndarray, chunk_vecs: np.ndarray) -> np.ndarray:
+        if len(chunk_vecs) == 0:
+            return np.zeros(0, dtype=np.float32)
+        scores = chunk_vecs @ query_vec
+        return np.maximum(scores.astype(np.float32), 0.0)
+
+    def _encode(self, texts: Sequence[str], *, is_query: bool) -> np.ndarray:
+        splade_encode = get_attr("splade_encode")
+        if self.model_path is None or not self.model_path.exists() or not callable(splade_encode):
+            self.using_fallback = True
+            self.fallback_reason = "splade_artifact_unavailable"
+            if is_query:
+                return np.vstack([self.fallback.encode_query(text) for text in texts])
+            return self.fallback.encode_chunks([_StubChunk(text) for text in texts])
+        try:
+            rows = splade_encode(
+                str(self.model_path),
+                list(texts),
+                self.config.dim,
+                is_query,
+            )
+            matrix = np.asarray(rows, dtype=np.float32)
+            return _normalize_rows(matrix)
+        except Exception as exc:
+            _log.warning("SPLADE inference unavailable (%s); using deterministic fallback", exc)
+            self.using_fallback = True
+            self.fallback_reason = "splade_runtime_failed"
+            if is_query:
+                return np.vstack([self.fallback.encode_query(text) for text in texts])
+            return self.fallback.encode_chunks([_StubChunk(text) for text in texts])
+
+
+@dataclass(slots=True)
+class MrlProjection:
+    model_path: Path | None
+    config: ProjectionConfig = field(default_factory=ProjectionConfig)
+    fallback: DeterministicSemanticProjection = field(
+        default_factory=DeterministicSemanticProjection
+    )
+    using_fallback: bool = False
+    fallback_reason: str | None = None
+
+    def encode_query(self, query: str) -> np.ndarray:
+        return self._encode([query], is_query=True)[0]
+
+    def encode_chunks(self, chunks: Sequence[Chunk]) -> np.ndarray:
+        if not chunks:
+            return np.zeros((0, self.config.dim), dtype=np.float32)
+        return self._encode([chunk.text for chunk in chunks], is_query=False)
+
+    def score(self, query_vec: np.ndarray, chunk_vecs: np.ndarray) -> np.ndarray:
+        if len(chunk_vecs) == 0:
+            return np.zeros(0, dtype=np.float32)
+        scores = chunk_vecs @ query_vec
+        return np.maximum(scores.astype(np.float32), 0.0)
+
+    def _encode(self, texts: Sequence[str], *, is_query: bool) -> np.ndarray:
+        mrl_encode = get_attr("mrl_encode")
+        if self.model_path is None or not self.model_path.exists() or not callable(mrl_encode):
+            self.using_fallback = True
+            self.fallback_reason = "mrl_artifact_unavailable"
+            if is_query:
+                return np.vstack([self.fallback.encode_query(text) for text in texts])
+            return self.fallback.encode_chunks([_StubChunk(text) for text in texts])
+        try:
+            rows = mrl_encode(
+                str(self.model_path),
+                list(texts),
+                self.config.dim,
+                is_query,
+            )
+            matrix = np.asarray(rows, dtype=np.float32)
+            return _normalize_rows(matrix)
+        except Exception as exc:
+            _log.warning("MRL inference unavailable (%s); using deterministic fallback", exc)
+            self.using_fallback = True
+            self.fallback_reason = "mrl_runtime_failed"
+            if is_query:
+                return np.vstack([self.fallback.encode_query(text) for text in texts])
+            return self.fallback.encode_chunks([_StubChunk(text) for text in texts])
+
+
+class _StubChunk:
+    __slots__ = ("text",)
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
 def load_projection(
     path: Path | None,
     config: ProjectionConfig | None = None,
@@ -351,3 +459,20 @@ def load_projection(
             exc,
         )
         return DeterministicSemanticProjection(fallback_config)
+
+
+def load_best_projection(
+    *,
+    model_dir: Path | None,
+    projection_model_path: Path | None,
+    config: ProjectionConfig | None = None,
+) -> SparseProjection | DeterministicSemanticProjection | SpladeProjection:
+    fallback_config = config or ProjectionConfig()
+    splade_model_path = model_dir / "splade" / "model.onnx" if model_dir is not None else None
+    if splade_model_path is not None and splade_model_path.exists():
+        return SpladeProjection(
+            model_path=splade_model_path,
+            config=fallback_config,
+            fallback=DeterministicSemanticProjection(fallback_config),
+        )
+    return load_projection(projection_model_path, fallback_config)

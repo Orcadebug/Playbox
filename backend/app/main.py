@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.ephemeral import router as ephemeral_router
 from app.api.router import api_router
 from app.config import get_settings
 from app.db import init_db
@@ -46,3 +47,4 @@ async def root_healthz() -> dict[str, str]:
 
 
 app.include_router(api_router, prefix=settings.api_prefix)
+app.include_router(ephemeral_router, prefix="/v1/search/ephemeral", tags=["ephemeral-search"])

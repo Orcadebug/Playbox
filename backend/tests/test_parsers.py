@@ -53,3 +53,15 @@ def test_parser_detector_routes_and_parses_common_formats() -> None:
     assert pdf_file.parser_name == "pdf"
     assert pdf_file.documents
     assert "Hello from pdf" in pdf_file.documents[0].content
+
+
+def test_pdf_parser_iter_parse_matches_parse() -> None:
+    parser = PDFParser()
+    raw = b"%PDF-1.4\nHello from pdf"
+
+    parsed = parser.parse("file.pdf", raw)
+    streamed = list(parser.iter_parse("file.pdf", raw))
+
+    assert [document.content for document in streamed] == [
+        document.content for document in parsed.documents
+    ]

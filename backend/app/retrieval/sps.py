@@ -14,8 +14,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from app.retrieval.bm25 import BM25Index, BM25ScoredChunk
+from app.config import RustBm25Mode
+from app.retrieval.bm25 import BM25Index, BM25ScoredChunk, BM25Tokenizer
 from app.retrieval.bm25_cache import BM25IndexCache, _chunks_hash
+from app.retrieval.retriever import _search_bm25_rust
 from app.retrieval.sparse_projection import (
     DeterministicSemanticProjection,
     NullProjection,
@@ -32,6 +34,7 @@ class SpsRetriever:
     candidate_multiplier: int = 3
     use_stemming: bool = True
     use_stopwords: bool = True
+    rust_mode: RustBm25Mode = "python"
 
     def search(
         self,
@@ -48,10 +51,10 @@ class SpsRetriever:
         content_hash = _chunks_hash(chunk_list)
         if self.cache is not None and use_cache:
             index = self.cache.get_or_build(workspace_id, chunk_list)
-            embeddings = self.cache.get_embeddings(workspace_id, content_hash)
+            embeddings = self.cache.get_embeddings(content_hash)
             if embeddings is None:
                 embeddings = self.projection.encode_chunks(chunk_list)
-                self.cache.set_embeddings(workspace_id, content_hash, embeddings)
+                self.cache.set_embeddings(content_hash, embeddings)
         else:
             index = BM25Index(
                 chunk_list,
@@ -67,8 +70,26 @@ class SpsRetriever:
             embeddings = self.projection.encode_chunks(indexed_chunks)
 
         candidate_pool = max(top_k * self.candidate_multiplier, top_k)
-
-        bm25_hits = index.search(query, top_k=candidate_pool)
+        if self.rust_mode == "rust":
+            tokenizer = BM25Tokenizer(
+                use_stemming=self.use_stemming,
+                use_stopwords=self.use_stopwords,
+            )
+            rust_hits = _search_bm25_rust(
+                query,
+                indexed_chunks,
+                top_k=candidate_pool,
+                tokenizer=tokenizer,
+                cache=self.cache if use_cache else None,
+                corpus_hash=content_hash,
+            )
+            bm25_hits = (
+                rust_hits
+                if rust_hits is not None
+                else index.search(query, top_k=candidate_pool)
+            )
+        else:
+            bm25_hits = index.search(query, top_k=candidate_pool)
         bm25_by_id: dict[str, float] = {
             hit.chunk.chunk_id: float(hit.bm25_score or hit.score) for hit in bm25_hits
         }

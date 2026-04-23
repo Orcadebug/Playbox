@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from app.retrieval.bm25 import BM25ScoredChunk, BM25Tokenizer
+from app.retrieval.rust_core import get_attr
 from app.schemas.documents import Chunk
 
 
@@ -53,6 +54,34 @@ class ExactPhraseRetriever:
         phrases = self._phrases(query)
         if not phrases:
             return []
+
+        rust_phrase_search = get_attr("phrase_search")
+        if callable(rust_phrase_search):
+            try:
+                rows = rust_phrase_search(
+                    phrases,
+                    [(chunk.chunk_id, chunk.text.lower()) for chunk in chunk_list],
+                    top_k,
+                )
+                chunk_by_id = {chunk.chunk_id: chunk for chunk in chunk_list}
+                hits: list[BM25ScoredChunk] = []
+                for chunk_id, score in rows:
+                    chunk = chunk_by_id.get(str(chunk_id))
+                    if chunk is None:
+                        continue
+                    hits.append(
+                        BM25ScoredChunk(
+                            chunk=chunk,
+                            score=float(score),
+                            bm25_score=None,
+                            rerank_score=None,
+                            channels=["phrase"],
+                            channel_scores={"phrase": float(score)},
+                        )
+                    )
+                return hits[:top_k]
+            except Exception:
+                pass
 
         hits: list[BM25ScoredChunk] = []
         for chunk in chunk_list:
