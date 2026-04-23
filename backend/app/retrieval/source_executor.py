@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.parsers.base import (
+    ParsedDocument,
     ParserDetector,
     SourceLocation,
     build_default_parser_registry,
@@ -88,19 +89,26 @@ def build_source_records(
     records: list[SourceRecord] = []
 
     for source_index, document in enumerate(documents):
-        parsed = detector.parse(
+        parser = detector.detect(
             file_name=document.file_name,
             content=document.data,
             media_type=document.media_type,
         )
         source_metadata = dict(document.metadata or {})
-        parser_name = str(source_metadata.get("parser_name") or parsed.parser_name)
+        parser_name = str(source_metadata.get("parser_name") or parser.name)
         source_name = document.file_name
         source_type = str(source_metadata.get("source_type") or "stored")
         source_origin = str(source_metadata.get("source_origin") or "stored")
         source_id = str(source_metadata.get("source_id") or f"source:{source_index}:{source_name}")
 
-        for record_index, parsed_document in enumerate(parsed.documents):
+        parsed_documents: Sequence[ParsedDocument] = tuple(
+            parser.iter_parse(
+                file_name=document.file_name,
+                content=document.data,
+                media_type=document.media_type,
+            )
+        )
+        for record_index, parsed_document in enumerate(parsed_documents):
             text = parsed_document.content
             if not text:
                 continue
@@ -108,8 +116,8 @@ def build_source_records(
             metadata = dict(source_metadata)
             metadata.update(parsed_document.metadata)
             metadata.setdefault("parser_name", parser_name)
-            if parsed.media_type is not None:
-                metadata.setdefault("media_type", parsed.media_type)
+            if document.media_type is not None:
+                metadata.setdefault("media_type", document.media_type)
 
             fallback_start = 0
             start = _as_int(

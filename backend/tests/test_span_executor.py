@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.parsers.base import ParserDetector, build_default_parser_registry
 from app.parsers.plaintext import PlainTextParser
+from app.retrieval.planner import QueryPlan
 from app.retrieval.reranker import HeuristicReranker
 from app.retrieval.source_executor import build_source_windows_from_documents
 from app.retrieval.span_executor import SpanExecutor
@@ -245,6 +246,68 @@ def test_span_executor_respects_rerank_budget_and_partial_flags() -> None:
     assert outcome.execution["window_count"] >= outcome.execution["scanned_windows"]
     assert outcome.final_results[0].metadata["retrieval_partial"] is True
     assert outcome.final_results[0].metadata["completion_reason"] == "partial_scan_limit"
+
+
+def test_span_executor_applies_mrl_pruning_before_rerank(
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    class FakeMrlProjection:
+        def encode_query(self, query: str):  # type: ignore[no-untyped-def]
+            return query
+
+        def encode_chunks(self, chunks):  # type: ignore[no-untyped-def]
+            return list(chunks)
+
+        def score(self, query_vec, chunk_vecs):  # type: ignore[no-untyped-def]
+            del query_vec
+            return [float(len(chunk.text.split())) for chunk in chunk_vecs]
+
+    def fake_build_query_plan(**kwargs):  # type: ignore[no-untyped-def]
+        return QueryPlan(
+            tier="huge",
+            window_tier="huge",
+            byte_tier="tiny",
+            channels=("exact", "semantic", "structure"),
+            window_count=10,
+            bytes_loaded=int(kwargs.get("bytes_loaded", 0)),
+            scan_budget_bytes=1024,
+            scan_limit=10,
+            candidate_limit=10,
+            rerank_limit=3,
+            partial=False,
+            metadata_prefilter=True,
+            use_cache=False,
+        )
+
+    monkeypatch.setattr("app.retrieval.span_executor.build_query_plan", fake_build_query_plan)
+    executor = SpanExecutor(
+        parser_detector=ParserDetector(
+            registry=build_default_parser_registry(),
+            default_parser=PlainTextParser(),
+        ),
+        reranker=HeuristicReranker(),
+        projection=DeterministicSemanticProjection(ProjectionConfig(hash_features=64, dim=16)),
+        mrl_projection=FakeMrlProjection(),
+        rerank_enabled=False,
+    )
+    documents = [
+        SearchDocument(
+            file_name=f"note-{idx}.txt",
+            content=("billing issue " + "detail " * idx + "refund workflow").strip(),
+            media_type="text/plain",
+            metadata={
+                "source_id": f"src-{idx}",
+                "source_origin": "stored",
+                "source_type": "upload",
+            },
+        )
+        for idx in range(1, 11)
+    ]
+
+    outcome = executor.execute(query="billing issue", documents=documents, top_k=3)
+
+    assert outcome.execution["mrl_applied"] is True
+    assert outcome.execution["shortlisted_candidates"] == 3
 
 
 def test_source_windows_keep_neighbor_ids_for_span_expansion() -> None:

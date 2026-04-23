@@ -145,6 +145,8 @@ class EvalCaseScore:
     primary_span_accuracy: float
     top_1_span_accuracy: float
     span_recall_at_5: float
+    mrr_at_k: float
+    ndcg_at_10: float
     exact_highlight_rate: float
     exact_hit_precision: float
     semantic_context_success: float
@@ -653,6 +655,29 @@ def _expected_span_hits(
     return hits
 
 
+def _ranking_metrics(
+    results: list[SearchResult],
+    expected: list[ExpectedHit],
+) -> tuple[float, float]:
+    expected_ids = {_item.source_id for _item in expected}
+    if not expected_ids:
+        return 1.0, 1.0
+
+    reciprocal_rank = 0.0
+    dcg = 0.0
+    for index, result in enumerate(results[:10], start=1):
+        if _source_id(result) not in expected_ids:
+            continue
+        if reciprocal_rank == 0.0:
+            reciprocal_rank = 1.0 / index
+        dcg += 1.0 / math.log2(index + 1)
+
+    ideal_hits = min(len(expected_ids), 10)
+    ideal_dcg = sum(1.0 / math.log2(index + 1) for index in range(1, ideal_hits + 1))
+    ndcg = dcg / ideal_dcg if ideal_dcg else 1.0
+    return reciprocal_rank, ndcg
+
+
 def evaluate_case(
     case: EvalCase,
     executor: SpanExecutor,
@@ -813,6 +838,7 @@ def evaluate_case(
     source_recall = source_hits / expected_total if expected_total else 1.0
     span_recall = span_hits / expected_total if expected_total else 1.0
     span_recall_at_5 = span_hits_at_5 / expected_total if expected_total else 1.0
+    mrr_at_k, ndcg_at_10 = _ranking_metrics(top_results, case.expected)
     primary_accuracy = primary_hits / expected_total if expected_total else 1.0
     exact_highlight_rate = (
         exact_highlight_hits / exact_expected_total if exact_expected_total else 1.0
@@ -841,6 +867,8 @@ def evaluate_case(
         primary_span_accuracy=primary_accuracy,
         top_1_span_accuracy=top_1_span_accuracy,
         span_recall_at_5=span_recall_at_5,
+        mrr_at_k=mrr_at_k,
+        ndcg_at_10=ndcg_at_10,
         exact_highlight_rate=exact_highlight_rate,
         exact_hit_precision=exact_hit_precision,
         semantic_context_success=semantic_context_success,
@@ -882,6 +910,8 @@ def _aggregate_metrics(case_scores: list[EvalCaseScore]) -> dict[str, float]:
             "source_recall_at_k": 0.0,
             "span_recall_at_k": 0.0,
             "span_recall_at_5": 0.0,
+            "mrr_at_k": 0.0,
+            "ndcg_at_10": 0.0,
             "primary_span_accuracy": 0.0,
             "top_1_span_accuracy": 0.0,
             "exact_highlight_rate": 0.0,
@@ -902,6 +932,8 @@ def _aggregate_metrics(case_scores: list[EvalCaseScore]) -> dict[str, float]:
     source_recall = mean(score.source_recall for score in case_scores)
     span_recall = mean(score.span_recall for score in case_scores)
     span_recall_at_5 = mean(score.span_recall_at_5 for score in case_scores)
+    mrr_at_k = mean(score.mrr_at_k for score in case_scores)
+    ndcg_at_10 = mean(score.ndcg_at_10 for score in case_scores)
     primary_accuracy = mean(score.primary_span_accuracy for score in case_scores)
     top_1_accuracy = mean(score.top_1_span_accuracy for score in case_scores)
     exact_highlight = mean(score.exact_highlight_rate for score in case_scores)
@@ -926,6 +958,8 @@ def _aggregate_metrics(case_scores: list[EvalCaseScore]) -> dict[str, float]:
         "source_recall_at_k": round(float(source_recall), 4),
         "span_recall_at_k": round(float(span_recall), 4),
         "span_recall_at_5": round(float(span_recall_at_5), 4),
+        "mrr_at_k": round(float(mrr_at_k), 4),
+        "ndcg_at_10": round(float(ndcg_at_10), 4),
         "primary_span_accuracy": round(float(primary_accuracy), 4),
         "top_1_span_accuracy": round(float(top_1_accuracy), 4),
         "exact_highlight_rate": round(float(exact_highlight), 4),

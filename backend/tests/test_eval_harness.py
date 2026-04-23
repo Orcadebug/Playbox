@@ -178,7 +178,7 @@ def test_cold_corpus_gate_keeps_cache_and_projection_untouched(tmp_path: Path) -
     assert cache.snapshot() == {}
 
 
-def test_evaluate_case_partial_miss_rate_increments_for_partial_scan() -> None:
+def test_evaluate_case_partial_scan_can_recover_with_prefiltering() -> None:
     executor = _executor()
     case = EvalCase(
         id="partial-miss",
@@ -207,8 +207,9 @@ def test_evaluate_case_partial_miss_rate_increments_for_partial_scan() -> None:
     score = evaluate_case(case, executor)
 
     assert score.execution["partial"] is True
-    assert score.partial_miss_rate == 1.0
-    assert score.span_recall == 0.0
+    assert score.execution["stage0_applied"] is True
+    assert score.partial_miss_rate == 0.0
+    assert score.span_recall == 1.0
 
 
 def test_run_eval_applies_gate_failures(fixtures_dir: Path) -> None:

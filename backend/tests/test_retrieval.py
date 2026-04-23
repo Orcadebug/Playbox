@@ -19,8 +19,11 @@ from app.retrieval.reranker import AutoReranker, HeuristicReranker
 from app.retrieval.retriever import Bm25Retriever
 from app.retrieval.sparse_projection import (
     DeterministicSemanticProjection,
+    MrlProjection,
     ProjectionConfig,
     SparseProjection,
+    SpladeProjection,
+    load_best_projection,
     load_projection,
     save_projection,
 )
@@ -175,6 +178,50 @@ def test_retriever_protocol_bm25_default_unchanged() -> None:
     assert [hit.score for hit in via_retriever] == [hit.score for hit in direct]
 
 
+def test_bm25_retriever_rust_mode_falls_back_to_python(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks = _make_chunks(4)
+    direct = BM25Index(chunks).search("billing refund", top_k=3)
+    monkeypatch.setattr("app.retrieval.retriever._get_rust_bm25_class", lambda: None)
+
+    via_retriever = Bm25Retriever(rust_mode="rust").search(
+        "billing refund",
+        chunks,
+        top_k=3,
+        workspace_id="test-ws",
+    )
+    assert [hit.chunk.chunk_id for hit in via_retriever] == [
+        hit.chunk.chunk_id for hit in direct
+    ]
+
+
+def test_bm25_retriever_real_rust_matches_python_ids_when_extension_installed() -> None:
+    module = pytest.importorskip("waver_core")
+    if not hasattr(module, "RustBm25Index"):
+        pytest.skip("Rust BM25 class not exported")
+
+    chunks = _sps_chunks([
+        ("billing refund issue for customer", "hit.txt"),
+        ("weather forecast tomorrow", "weather.txt"),
+        ("shipping delay at warehouse", "ship.txt"),
+    ])
+    python_hits = Bm25Retriever(rust_mode="python").search(
+        "billing refund",
+        chunks,
+        top_k=3,
+        workspace_id="ws-rust-bm25",
+    )
+    rust_hits = Bm25Retriever(rust_mode="rust").search(
+        "billing refund",
+        chunks,
+        top_k=3,
+        workspace_id="ws-rust-bm25",
+    )
+
+    assert [hit.chunk.chunk_id for hit in rust_hits] == [hit.chunk.chunk_id for hit in python_hits]
+
+
 def test_retriever_flag_rejects_unknown() -> None:
     with pytest.raises(ValidationError):
         Settings(waver_retriever="unknown")
@@ -276,6 +323,81 @@ def test_sps_retriever_empty_inputs() -> None:
     assert retriever.search("query", [], top_k=3, workspace_id="ws") == []
 
 
+def test_splade_projection_falls_back_when_artifact_missing(
+    tmp_path,
+) -> None:  # type: ignore[no-untyped-def]
+    config = ProjectionConfig(hash_features=64, dim=16)
+    projection = SpladeProjection(
+        model_path=tmp_path / "missing.onnx",
+        config=config,
+        fallback=DeterministicSemanticProjection(config),
+    )
+
+    query_vec = projection.encode_query("billing refund")
+    chunk_vecs = projection.encode_chunks(_sps_chunks([("duplicate charge", "ticket.txt")]))
+
+    assert projection.using_fallback is True
+    assert projection.fallback_reason == "splade_artifact_unavailable"
+    assert query_vec.shape == (config.dim,)
+    assert chunk_vecs.shape == (1, config.dim)
+
+
+def test_splade_projection_records_runtime_fallback_when_artifact_present(
+    tmp_path,
+) -> None:  # type: ignore[no-untyped-def]
+    config = ProjectionConfig(hash_features=64, dim=16)
+    model_path = tmp_path / "splade" / "model.onnx"
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    model_path.write_bytes(b"placeholder")
+    projection = SpladeProjection(
+        model_path=model_path,
+        config=config,
+        fallback=DeterministicSemanticProjection(config),
+    )
+
+    _ = projection.encode_query("billing refund")
+
+    assert projection.using_fallback is True
+    assert projection.fallback_reason == "splade_runtime_failed"
+
+
+def test_load_best_projection_prefers_splade_artifact(
+    tmp_path,
+) -> None:  # type: ignore[no-untyped-def]
+    config = ProjectionConfig(hash_features=64, dim=16)
+    model_dir = tmp_path / "models"
+    splade_model = model_dir / "splade" / "model.onnx"
+    splade_model.parent.mkdir(parents=True, exist_ok=True)
+    splade_model.write_bytes(b"placeholder")
+
+    projection = load_best_projection(
+        model_dir=model_dir,
+        projection_model_path=None,
+        config=config,
+    )
+
+    assert isinstance(projection, SpladeProjection)
+
+
+def test_mrl_projection_records_runtime_fallback_when_artifact_present(
+    tmp_path,
+) -> None:  # type: ignore[no-untyped-def]
+    config = ProjectionConfig(hash_features=64, dim=16)
+    model_path = tmp_path / "mrl" / "model.onnx"
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    model_path.write_bytes(b"placeholder")
+    projection = MrlProjection(
+        model_path=model_path,
+        config=config,
+        fallback=DeterministicSemanticProjection(config),
+    )
+
+    _ = projection.encode_query("billing refund")
+
+    assert projection.using_fallback is True
+    assert projection.fallback_reason == "mrl_runtime_failed"
+
+
 # ---------------------------------------------------------------------------
 # Negation / polarity feature tests
 # ---------------------------------------------------------------------------
@@ -359,6 +481,38 @@ def test_exact_phrase_retriever_finds_literal_substring() -> None:
     assert hits
     assert hits[0].chunk.source_name == "log1.txt"
     assert "phrase" in hits[0].channels
+
+
+def test_exact_phrase_retriever_real_rust_matches_python_when_extension_installed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = pytest.importorskip("waver_core")
+    if not hasattr(module, "phrase_search"):
+        pytest.skip("Rust phrase search is not exported")
+
+    from app.retrieval.exact_phrase import ExactPhraseRetriever
+
+    chunks = _sps_chunks([
+        ("system reported error code 503 gateway timeout", "log1.txt"),
+        ("system reported error code 404", "log2.txt"),
+        ("unrelated weather forecast", "weather.txt"),
+    ])
+    rust_hits = ExactPhraseRetriever().search(
+        "error code 503",
+        chunks,
+        top_k=5,
+        workspace_id="ws-phrase-rust",
+    )
+
+    monkeypatch.setattr("app.retrieval.exact_phrase.get_attr", lambda name: None)
+    python_hits = ExactPhraseRetriever().search(
+        "error code 503",
+        chunks,
+        top_k=5,
+        workspace_id="ws-phrase-rust",
+    )
+
+    assert [hit.chunk.chunk_id for hit in rust_hits] == [hit.chunk.chunk_id for hit in python_hits]
 
 
 def test_multihead_rrf_union_combines_heads() -> None:
@@ -536,6 +690,44 @@ def test_multihead_rrf_real_rust_matches_python_when_extension_installed() -> No
     assert _hit_signature(rust_hits) == _hit_signature(python_hits)
 
 
+def test_stage0_prefilter_real_rust_matches_python_when_extension_installed() -> None:
+    module = pytest.importorskip("waver_core")
+    if not hasattr(module, "prefilter_windows"):
+        pytest.skip("Rust prefilter is not exported")
+
+    from app.retrieval.source_executor import SourceWindow
+    from app.retrieval.span_executor import _prefilter_windows, _python_prefilter_windows
+
+    windows = [
+        SourceWindow(
+            window_id=f"w-{index}",
+            record_id=f"r-{index}",
+            source_id=f"s-{index}",
+            source_name=f"doc-{index}.txt",
+            source_type="raw",
+            source_origin="raw",
+            parser_name="plaintext",
+            text=text,
+        )
+        for index, text in enumerate(
+            [
+                "heartbeat heartbeat heartbeat",
+                "fatal timeout marker 9f2 observed in prod",
+                "gateway timeout with error code 503",
+                "shipping notice and unrelated update",
+            ],
+            start=1,
+        )
+    ]
+
+    rust_hits = _prefilter_windows("fatal timeout marker 9f2", windows, limit=2)
+    python_hits = _python_prefilter_windows("fatal timeout marker 9f2", windows, limit=2)
+
+    assert [window.window_id for window in rust_hits] == [
+        window.window_id for window in python_hits
+    ]
+
+
 def test_multihead_empty_chunks_returns_empty() -> None:
     from app.retrieval.retriever import MultiHeadRetriever
 
@@ -563,6 +755,22 @@ def test_budget_hint_fast_shrinks_candidate_limit() -> None:
     )
     assert fast.candidate_limit < baseline.candidate_limit
     assert fast.rerank_limit < baseline.rerank_limit
+
+
+def test_byte_budget_promotes_plan_to_huge_tier() -> None:
+    from app.retrieval.planner import build_query_plan
+
+    plan = build_query_plan(
+        query="q",
+        top_k=5,
+        window_count=10,
+        bytes_loaded=40 * 1024 * 1024,
+    )
+
+    assert plan.window_tier == "tiny"
+    assert plan.byte_tier == "huge"
+    assert plan.tier == "huge"
+    assert plan.scan_budget_bytes <= 32 * 1024 * 1024
 
 
 def test_negation_preserves_unrelated_text_similarity() -> None:
@@ -730,8 +938,8 @@ def test_bm25_cache_snapshot_is_stable_and_thread_safe() -> None:
     second = cache.snapshot()
 
     assert first == second
-    assert first["ws1"]["chunk_count"] == len(chunks)
-    assert "content_hash" in first["ws1"]
+    assert first["aliases"]["ws1"] in first["entries"]
+    assert first["entries"][first["aliases"]["ws1"]]["chunk_count"] == len(chunks)
 
 
 def test_bm25_cache_invalidates_on_content_change() -> None:
@@ -748,25 +956,29 @@ def test_bm25_cache_explicit_invalidate() -> None:
     chunks = _make_chunks(3)
     idx1 = cache.get_or_build("ws1", chunks)
     cache.invalidate("ws1")
+    with cache._lock:
+        assert "ws1" not in cache._workspace_aliases
     idx2 = cache.get_or_build("ws1", chunks)
-    assert idx1 is not idx2, "After explicit invalidation, a new index should be built"
+    assert idx1 is idx2, "Workspace invalidation should not evict reusable payload cache entries"
 
 
 def test_bm25_cache_evicts_lru() -> None:
     cache = BM25IndexCache(ttl=60.0, max_entries=3)
-    for ws in ("ws1", "ws2", "ws3"):
-        cache.get_or_build(ws, _make_chunks(2))
+    cache.get_or_build("ws1", _make_chunks(1))
+    cache.get_or_build("ws2", _make_chunks(2))
+    cache.get_or_build("ws3", _make_chunks(3))
 
     # Access ws1 to mark it recently used
-    cache.get_or_build("ws1", _make_chunks(2))
+    cache.get_or_build("ws1", _make_chunks(1))
 
     # Adding ws4 should evict ws2 (LRU)
-    cache.get_or_build("ws4", _make_chunks(2))
+    cache.get_or_build("ws4", _make_chunks(4))
 
     with cache._lock:
-        assert "ws2" not in cache._cache
-        assert "ws1" in cache._cache
-        assert "ws4" in cache._cache
+        aliases = dict(cache._workspace_aliases)
+        assert "ws2" not in aliases
+        assert aliases["ws1"] in cache._cache
+        assert aliases["ws4"] in cache._cache
 
 
 def test_bm25_cache_ttl_expiry() -> None:
@@ -906,7 +1118,7 @@ def test_pipeline_uses_bm25_cache() -> None:
     pipeline.search("billing", docs, top_k=5, workspace_id="test-ws")
     # Second search — should hit cache (no second build)
     with cache._lock:
-        assert "test-ws" in cache._cache
+        assert cache._workspace_aliases["test-ws"] in cache._cache
 
 
 def test_pipeline_can_skip_bm25_cache_for_ephemeral_sources() -> None:

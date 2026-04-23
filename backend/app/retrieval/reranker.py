@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Protocol
 
 from app.retrieval.bm25 import _WORD_RE, BM25ScoredChunk
+from services.reranker import build_remote_reranker_client
 
 _log = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ class AutoReranker:
         self._max_length = max_length
         self._max_candidates = max_candidates
         self._use_fallback = True
+        self._remote_client = build_remote_reranker_client()
         self._session = None
         self._tokenizer_instance = None
         self._load_model()
@@ -116,6 +118,10 @@ class AutoReranker:
     def rerank(
         self, query: str, candidates: list[BM25ScoredChunk], top_k: int = 10
     ) -> list[BM25ScoredChunk]:
+        if self._remote_client is not None:
+            remote = self._remote_client.rerank(query, candidates, top_k=top_k)
+            if remote is not None:
+                return _apply_remote_scores(candidates, remote, top_k=top_k)
         if self._use_fallback or self._session is None:
             return self.fallback.rerank(query, candidates, top_k=top_k)
         # Truncate to max_candidates before neural inference to cap latency.
@@ -175,3 +181,29 @@ class AutoReranker:
             _log.error("ONNX reranking failed (%s) — switching to heuristic fallback", exc)
             self._use_fallback = True
             return self.fallback.rerank(query, candidates, top_k=top_k)
+
+
+def _apply_remote_scores(
+    candidates: list[BM25ScoredChunk],
+    remote_scores: list[tuple[str, float]],
+    *,
+    top_k: int,
+) -> list[BM25ScoredChunk]:
+    by_id = {candidate.chunk.chunk_id: candidate for candidate in candidates}
+    reranked: list[BM25ScoredChunk] = []
+    for chunk_id, score in remote_scores:
+        candidate = by_id.get(chunk_id)
+        if candidate is None:
+            continue
+        reranked.append(
+            BM25ScoredChunk(
+                chunk=candidate.chunk,
+                score=float(score),
+                bm25_score=(
+                    candidate.bm25_score if candidate.bm25_score is not None else candidate.score
+                ),
+                rerank_score=float(score),
+            )
+        )
+    reranked.sort(key=lambda item: (-item.score, item.chunk.chunk_id))
+    return reranked[:top_k]

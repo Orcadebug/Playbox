@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package waver.reranker.v1;
+
+service Reranker {
+  rpc Rerank(RerankRequest) returns (RerankResponse);
+}
+
+message Candidate {
+  string id = 1;
+  string text = 2;
+}
+
+message ScoredCandidate {
+  string id = 1;
+  float score = 2;
+}
+
+message RerankRequest {
+  string query = 1;
+  uint32 top_k = 2;
+  repeated Candidate candidates = 3;
+}
+
+message RerankResponse {
+  repeated ScoredCandidate scored_candidates = 1;
+}

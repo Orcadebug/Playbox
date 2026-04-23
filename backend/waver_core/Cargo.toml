@@ -8,4 +8,6 @@ name = "waver_core"
 crate-type = ["cdylib"]
 
 [dependencies]
+aho-corasick = "1.1.3"
 pyo3 = { version = "0.22.6", features = ["extension-module"] }
+tantivy = "0.22.0"

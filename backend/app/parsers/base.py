@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
-from typing import Mapping
 
 
 @dataclass(slots=True)
@@ -72,6 +72,14 @@ class BaseParser(ABC):
     def parse(self, file_name: str, content: bytes, media_type: str | None = None) -> ParsedFile:
         raise NotImplementedError
 
+    def iter_parse(
+        self,
+        file_name: str,
+        content: bytes,
+        media_type: str | None = None,
+    ) -> Iterator[ParsedDocument]:
+        yield from self.parse(file_name, content, media_type).documents
+
 
 @dataclass(slots=True)
 class ParserDetector:
@@ -81,7 +89,11 @@ class ParserDetector:
     def detect(self, file_name: str, content: bytes, media_type: str | None = None) -> BaseParser:
         from app.parsers.detector import detect_parser_name
 
-        parser_name = detect_parser_name(file_name=file_name, content=content, media_type=media_type)
+        parser_name = detect_parser_name(
+            file_name=file_name,
+            content=content,
+            media_type=media_type,
+        )
         parser = self.registry.get(parser_name)
         if parser is not None:
             return parser
@@ -89,6 +101,18 @@ class ParserDetector:
 
     def parse(self, file_name: str, content: bytes, media_type: str | None = None) -> ParsedFile:
         return self.detect(file_name, content, media_type).parse(file_name, content, media_type)
+
+    def iter_parse(
+        self,
+        file_name: str,
+        content: bytes,
+        media_type: str | None = None,
+    ) -> Iterator[ParsedDocument]:
+        yield from self.detect(file_name, content, media_type).iter_parse(
+            file_name,
+            content,
+            media_type,
+        )
 
 
 def build_default_parser_registry() -> dict[str, BaseParser]:
