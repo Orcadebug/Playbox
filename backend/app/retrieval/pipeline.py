@@ -172,6 +172,10 @@ class RetrievalPipeline:
     bm25_cache: BM25IndexCache | None = None
     retriever: Retriever | None = None
     confidence_threshold: float = 0.85
+    projection: object | None = None
+    adaptive_budget: bool = True
+    budget_spread_threshold: float = 0.15
+    budget_expansion_factor: int = 3
 
     def __post_init__(self) -> None:
         if self.retriever is None:
@@ -184,6 +188,7 @@ class RetrievalPipeline:
         top_k: int = 10,
         workspace_id: str = "default",
         use_cache: bool = True,
+        budget_hint: str = "auto",
     ) -> list[SearchResult]:
         parsed_documents = self._parse_documents(documents)
 
@@ -207,6 +212,29 @@ class RetrievalPipeline:
             workspace_id=workspace_id,
             use_cache=use_cache,
         )
+
+        # Adaptive candidate budget: expand the pool when signal is weak so
+        # the reranker sees more candidates. Skipped when caller asks for
+        # "fast"; forced when caller asks for "thorough".
+        if budget_hint != "fast" and self.adaptive_budget:
+            expand = budget_hint == "thorough"
+            if not expand and first_stage_hits:
+                top_score = first_stage_hits[0].score
+                floor_idx = min(4, len(first_stage_hits) - 1)
+                spread = top_score - first_stage_hits[floor_idx].score
+                expand = (
+                    spread < self.budget_spread_threshold
+                    or len(first_stage_hits) < top_k
+                )
+            if expand:
+                expanded_top_k = self.bm25_candidates * self.budget_expansion_factor
+                first_stage_hits = self.retriever.search(
+                    query,
+                    chunks,
+                    top_k=expanded_top_k,
+                    workspace_id=workspace_id,
+                    use_cache=use_cache,
+                )
         reranked = self.reranker.rerank(query, first_stage_hits, top_k=top_k)
         results = [self._to_search_result(hit, query) for hit in reranked[:top_k]]
 
@@ -275,6 +303,16 @@ class RetrievalPipeline:
         if not matched_spans:
             matched_spans = [_build_context_span(hit.chunk.text, source_base, location)]
         primary_span = matched_spans[0]
+
+        if self.projection is not None:
+            from app.retrieval.sentence_scorer import find_best_sentence  # noqa: PLC0415
+
+            best = find_best_sentence(query, hit.chunk.text, self.projection)
+            if best is not None:
+                start, end = best
+                primary_span = _build_span_payload(
+                    hit.chunk.text, start, end, source_base, location
+                )
         return SearchResult(
             content=hit.chunk.text,
             snippet=str(primary_span["snippet"]),
@@ -292,4 +330,6 @@ class RetrievalPipeline:
             spans=spans or None,
             primary_span=primary_span,
             matched_spans=matched_spans,
+            channels=list(hit.channels),
+            channel_scores=dict(hit.channel_scores),
         )

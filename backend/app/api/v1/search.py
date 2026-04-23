@@ -43,6 +43,7 @@ class SearchRequest(BaseModel):
     connector_configs: list[ConnectorConfigPayload] = Field(default_factory=list)
     include_stored_sources: bool = True
     answer_mode: Literal["off", "llm"] = "off"
+    budget_hint: Literal["auto", "fast", "thorough"] = "auto"
 
 
 @router.post("")
@@ -62,6 +63,7 @@ async def search(
         ],
         include_stored_sources=payload.include_stored_sources,
         answer_mode=payload.answer_mode,
+        budget_hint=payload.budget_hint,
     )
 
 
@@ -84,6 +86,7 @@ async def search_stream(
             ],
             include_stored_sources=payload.include_stored_sources,
             answer_mode=payload.answer_mode,
+            budget_hint=payload.budget_hint,
         ):
             yield chunk
 

@@ -201,6 +201,7 @@ class SpanExecutor:
         documents: Sequence[SearchDocument],
         top_k: int,
         cacheable: bool = False,
+        budget_hint: str = "auto",
     ) -> SpanExecutionOutcome:
         started_at = perf_counter()
         phase_timings: dict[str, float] = {}
@@ -218,6 +219,7 @@ class SpanExecutor:
             window_count=len(windows),
             source_origins=origins,
             cacheable=cacheable,
+            budget_hint=budget_hint,  # type: ignore[arg-type]
         )
         scanned_windows = windows[: plan.scan_limit]
 

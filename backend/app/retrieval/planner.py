@@ -29,6 +29,7 @@ def build_query_plan(
     window_count: int,
     source_origins: set[str] | None = None,
     cacheable: bool = False,
+    budget_hint: Literal["auto", "fast", "thorough"] = "auto",
 ) -> QueryPlan:
     del query  # Reserved for future query-shape heuristics.
     origins = source_origins or set()
@@ -55,6 +56,13 @@ def build_query_plan(
 
     if "connector" in origins and tier != "tiny":
         scan_limit = min(window_count, int(scan_limit * 0.9))
+
+    if budget_hint == "thorough":
+        candidate_limit = int(candidate_limit * 2)
+        rerank_limit = int(rerank_limit * 1.5)
+    elif budget_hint == "fast":
+        candidate_limit = max(k * 5, candidate_limit // 2)
+        rerank_limit = max(k * 3, rerank_limit // 2)
 
     partial = window_count > scan_limit
     use_cache = cacheable and tier != "huge" and origins.issubset({"stored"})
