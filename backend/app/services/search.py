@@ -75,6 +75,8 @@ def _build_retriever(settings: Settings, bm25_cache: BM25IndexCache) -> Retrieve
                 ("phrase", ExactPhraseRetriever()),
             ],
             rrf_k=settings.waver_rrf_k,
+            use_rust_rrf=settings.waver_rust_rrf,
+            shadow_compare=settings.waver_rust_rrf_shadow,
         )
     if settings.waver_retriever == "cortical":
         from app.retrieval.cortical import CorticalRetriever, default_trie_builder  # noqa: PLC0415

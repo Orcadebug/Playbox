@@ -390,6 +390,152 @@ def test_multihead_rrf_union_combines_heads() -> None:
     assert all(h.channels for h in hits)
 
 
+def _hit_signature(hits: list[BM25ScoredChunk]) -> list[tuple[object, ...]]:
+    return [
+        (
+            hit.chunk.chunk_id,
+            round(hit.score, 12),
+            tuple(hit.channels),
+            tuple((k, round(v, 12)) for k, v in sorted(hit.channel_scores.items())),
+            None if hit.bm25_score is None else round(hit.bm25_score, 12),
+        )
+        for hit in hits
+    ]
+
+
+def test_multihead_rrf_rust_flag_falls_back_to_python(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.retrieval.exact_phrase import ExactPhraseRetriever
+    from app.retrieval.retriever import Bm25Retriever, MultiHeadRetriever
+    from app.retrieval.sps import SpsRetriever
+
+    monkeypatch.setattr("app.retrieval.retriever._get_rust_rrf_callable", lambda: None)
+
+    chunks = _sps_chunks([
+        ("customer charged duplicate", "synonym.txt"),
+        ("error code 503 gateway timeout", "phrase.txt"),
+        ("billing refund issue", "lexical.txt"),
+        ("unrelated shipping note", "noise.txt"),
+    ])
+    heads = [
+        ("sps", SpsRetriever(projection=DeterministicSemanticProjection(), cache=None)),
+        ("bm25", Bm25Retriever()),
+        ("phrase", ExactPhraseRetriever()),
+    ]
+    baseline = MultiHeadRetriever(heads=heads).search(
+        "billed twice", chunks, top_k=4, workspace_id="ws-rust-fallback"
+    )
+    rust_flag = MultiHeadRetriever(heads=heads, use_rust_rrf=True).search(
+        "billed twice", chunks, top_k=4, workspace_id="ws-rust-fallback"
+    )
+
+    assert _hit_signature(rust_flag) == _hit_signature(baseline)
+
+
+def test_multihead_rrf_uses_rust_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.retrieval.retriever import Bm25Retriever, MultiHeadRetriever
+
+    calls: list[tuple[object, ...]] = []
+
+    def _fake_rust_rrf(payload, top_k, rrf_k):
+        calls.append((payload, top_k, rrf_k))
+        chunk_id = payload[0][1][0][0]
+        return [
+            (
+                chunk_id,
+                42.0,
+                ["rust"],
+                {"rust": 7.0},
+                None,
+            )
+        ]
+
+    monkeypatch.setattr("app.retrieval.retriever._get_rust_rrf_callable", lambda: _fake_rust_rrf)
+
+    chunks = _sps_chunks([
+        ("billing refund issue", "lexical.txt"),
+        ("customer charged duplicate", "synonym.txt"),
+    ])
+    retriever = MultiHeadRetriever(
+        heads=[("bm25", Bm25Retriever())],
+        use_rust_rrf=True,
+    )
+    hits = retriever.search(
+        "billing refund", chunks, top_k=2, workspace_id="ws-rust-primary"
+    )
+
+    assert calls
+    assert hits
+    assert hits[0].score == 42.0
+    assert hits[0].channels == ["rust"]
+
+
+def test_multihead_rrf_shadow_logs_mismatch(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from app.retrieval.retriever import Bm25Retriever, MultiHeadRetriever
+
+    def _fake_rust_rrf(payload, top_k, rrf_k):
+        chunk_id = payload[0][1][0][0]
+        return [
+            (
+                chunk_id,
+                999.0,
+                ["rust"],
+                {"rust": 999.0},
+                None,
+            )
+        ]
+
+    monkeypatch.setattr("app.retrieval.retriever._get_rust_rrf_callable", lambda: _fake_rust_rrf)
+
+    chunks = _sps_chunks([
+        ("billing refund issue", "lexical.txt"),
+        ("customer charged duplicate", "synonym.txt"),
+    ])
+    retriever = MultiHeadRetriever(
+        heads=[("bm25", Bm25Retriever())],
+        shadow_compare=True,
+    )
+    with caplog.at_level("WARNING", logger="app.retrieval.retriever"):
+        hits = retriever.search(
+            "billing refund", chunks, top_k=2, workspace_id="ws-rust-shadow"
+        )
+
+    assert hits
+    assert "RRF parity mismatch" in caplog.text
+
+
+def test_multihead_rrf_real_rust_matches_python_when_extension_installed() -> None:
+    pytest.importorskip("waver_core")
+    from app.retrieval.exact_phrase import ExactPhraseRetriever
+    from app.retrieval.retriever import Bm25Retriever, MultiHeadRetriever
+    from app.retrieval.sps import SpsRetriever
+
+    chunks = _sps_chunks([
+        ("customer charged duplicate", "synonym.txt"),
+        ("error code 503 gateway timeout", "phrase.txt"),
+        ("billing refund issue", "lexical.txt"),
+        ("unrelated shipping note", "noise.txt"),
+    ])
+    heads = [
+        ("sps", SpsRetriever(projection=DeterministicSemanticProjection(), cache=None)),
+        ("bm25", Bm25Retriever()),
+        ("phrase", ExactPhraseRetriever()),
+    ]
+    python_hits = MultiHeadRetriever(heads=heads).search(
+        "billed twice", chunks, top_k=4, workspace_id="ws-rust-real"
+    )
+    rust_hits = MultiHeadRetriever(heads=heads, use_rust_rrf=True).search(
+        "billed twice", chunks, top_k=4, workspace_id="ws-rust-real"
+    )
+
+    assert _hit_signature(rust_hits) == _hit_signature(python_hits)
+
+
 def test_multihead_empty_chunks_returns_empty() -> None:
     from app.retrieval.retriever import MultiHeadRetriever
 
