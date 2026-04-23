@@ -32,9 +32,10 @@ async def upload_sources(
         payload = await upload.read()
 
         if len(payload) > settings.max_upload_bytes:
+            max_mb = settings.max_upload_bytes // (1024 * 1024)
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"File '{upload.filename}' exceeds {settings.max_upload_bytes // (1024 * 1024)} MB limit",
+                detail=f"File '{upload.filename}' exceeds {max_mb} MB limit",
             )
 
         file_name = upload.filename or "upload.bin"

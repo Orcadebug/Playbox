@@ -58,7 +58,11 @@ def test_json_list_becomes_logical_record_windows() -> None:
             file_name="events.json",
             content=json_payload,
             media_type="application/json",
-            metadata={"source_id": "json-1", "source_origin": "connector", "source_type": "webhook"},
+            metadata={
+                "source_id": "json-1",
+                "source_origin": "connector",
+                "source_type": "webhook",
+            },
         )
     ]
 
