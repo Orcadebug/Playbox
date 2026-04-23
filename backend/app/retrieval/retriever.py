@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+import importlib
+import logging
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from functools import lru_cache
+from time import perf_counter
 from typing import Protocol
 
 from app.retrieval.bm25 import BM25Index, BM25ScoredChunk
 from app.retrieval.bm25_cache import BM25IndexCache
 from app.schemas.documents import Chunk
+
+_log = logging.getLogger(__name__)
+_RUST_RRF_MODULE = "waver_core"
 
 
 class Retriever(Protocol):
@@ -51,6 +58,169 @@ class Bm25Retriever:
 
 
 @dataclass(slots=True)
+class _FusedRrfRow:
+    chunk_id: str
+    score: float
+    channels: list[str]
+    channel_scores: dict[str, float]
+    bm25_score: float | None
+
+
+def _rrf_fuse_python(
+    head_hits: list[tuple[str, list[BM25ScoredChunk]]],
+    *,
+    top_k: int,
+    rrf_k: int,
+) -> list[_FusedRrfRow]:
+    fused: dict[str, dict[str, object]] = {}
+    for name, hits in head_hits:
+        for rank, hit in enumerate(hits):
+            cid = hit.chunk.chunk_id
+            slot = fused.setdefault(
+                cid,
+                {
+                    "score": 0.0,
+                    "channels": [],
+                    "channel_scores": {},
+                    "bm25_score": hit.bm25_score,
+                },
+            )
+            slot["score"] = float(slot["score"]) + 1.0 / (rrf_k + rank + 1)
+            slot["channels"].append(name)  # type: ignore[union-attr]
+            slot["channel_scores"][name] = float(hit.score)  # type: ignore[index]
+            # Keep the most informative bm25_score (non-None wins).
+            if slot["bm25_score"] is None and hit.bm25_score is not None:
+                slot["bm25_score"] = hit.bm25_score
+
+    ordered = sorted(fused.items(), key=lambda kv: (-float(kv[1]["score"]), kv[0]))
+    return [
+        _FusedRrfRow(
+            chunk_id=chunk_id,
+            score=float(slot["score"]),
+            channels=list(slot["channels"]),  # type: ignore[arg-type]
+            channel_scores=dict(slot["channel_scores"]),  # type: ignore[arg-type]
+            bm25_score=slot["bm25_score"],  # type: ignore[arg-type]
+        )
+        for chunk_id, slot in ordered[:top_k]
+    ]
+
+
+@lru_cache(maxsize=1)
+def _get_rust_rrf_callable() -> Callable[..., object] | None:
+    try:
+        module = importlib.import_module(_RUST_RRF_MODULE)
+    except Exception as exc:
+        _log.warning("Rust RRF unavailable (%s) — using Python fallback", exc)
+        return None
+
+    rrf_fuse = getattr(module, "rrf_fuse", None)
+    if not callable(rrf_fuse):
+        _log.warning(
+            "Rust RRF unavailable (%s.rrf_fuse missing) — using Python fallback",
+            _RUST_RRF_MODULE,
+        )
+        return None
+    return rrf_fuse
+
+
+def _prepare_rust_payload(
+    head_hits: list[tuple[str, list[BM25ScoredChunk]]],
+) -> list[tuple[str, list[tuple[str, float, float | None]]]]:
+    payload: list[tuple[str, list[tuple[str, float, float | None]]]] = []
+    for name, hits in head_hits:
+        payload.append(
+            (
+                name,
+                [
+                    (
+                        hit.chunk.chunk_id,
+                        float(hit.score),
+                        hit.bm25_score,
+                    )
+                    for hit in hits
+                ],
+            )
+        )
+    return payload
+
+
+def _rrf_fuse_rust(
+    head_hits: list[tuple[str, list[BM25ScoredChunk]]],
+    *,
+    top_k: int,
+    rrf_k: int,
+) -> list[_FusedRrfRow] | None:
+    rrf_fuse = _get_rust_rrf_callable()
+    if rrf_fuse is None:
+        return None
+
+    payload = _prepare_rust_payload(head_hits)
+    try:
+        rows = rrf_fuse(payload, top_k, rrf_k)
+    except Exception as exc:
+        _log.warning("Rust RRF call failed (%s) — using Python fallback", exc)
+        return None
+
+    parsed: list[_FusedRrfRow] = []
+    try:
+        for row in rows:
+            chunk_id, score, channels, channel_scores, bm25_score = row
+            parsed.append(
+                _FusedRrfRow(
+                    chunk_id=str(chunk_id),
+                    score=float(score),
+                    channels=[str(channel) for channel in channels],
+                    channel_scores={
+                        str(name): float(value) for name, value in dict(channel_scores).items()
+                    },
+                    bm25_score=None if bm25_score is None else float(bm25_score),
+                )
+            )
+    except Exception as exc:
+        _log.warning("Rust RRF payload parse failed (%s) — using Python fallback", exc)
+        return None
+    return parsed
+
+
+def _fused_signature(rows: list[_FusedRrfRow]) -> list[tuple[object, ...]]:
+    return [
+        (
+            row.chunk_id,
+            round(float(row.score), 12),
+            tuple(row.channels),
+            tuple(
+                (name, round(float(value), 12))
+                for name, value in sorted(row.channel_scores.items())
+            ),
+            None if row.bm25_score is None else round(float(row.bm25_score), 12),
+        )
+        for row in rows
+    ]
+
+
+def _materialize_results(
+    rows: list[_FusedRrfRow],
+    chunk_by_id: dict[str, Chunk],
+) -> list[BM25ScoredChunk]:
+    results: list[BM25ScoredChunk] = []
+    for row in rows:
+        chunk = chunk_by_id.get(row.chunk_id)
+        if chunk is None:
+            continue
+        results.append(
+            BM25ScoredChunk(
+                chunk=chunk,
+                score=float(row.score),
+                bm25_score=row.bm25_score,
+                rerank_score=None,
+                channels=list(row.channels),
+                channel_scores=dict(row.channel_scores),
+            )
+        )
+    return results
+
+
+@dataclass(slots=True)
 class MultiHeadRetriever:
     """Run multiple retriever heads in parallel and fuse via Reciprocal Rank
     Fusion (RRF). RRF is scale-free, so heads with different score ranges
@@ -62,6 +232,8 @@ class MultiHeadRetriever:
 
     heads: list[tuple[str, Retriever]] = field(default_factory=list)
     rrf_k: int = 60
+    use_rust_rrf: bool = False
+    shadow_compare: bool = False
 
     def search(
         self,
@@ -75,52 +247,73 @@ class MultiHeadRetriever:
         if not chunk_list or not self.heads:
             return []
 
-        per_head: dict[str, list[BM25ScoredChunk]] = {}
+        per_head: list[tuple[str, list[BM25ScoredChunk]]] = []
         for name, head in self.heads:
-            per_head[name] = head.search(
-                query,
-                chunk_list,
-                top_k=top_k,
-                workspace_id=workspace_id,
-                use_cache=use_cache,
-            )
-
-        fused: dict[str, dict[str, object]] = {}
-        for name, hits in per_head.items():
-            for rank, hit in enumerate(hits):
-                cid = hit.chunk.chunk_id
-                slot = fused.setdefault(
-                    cid,
-                    {
-                        "hit": hit,
-                        "score": 0.0,
-                        "channels": [],
-                        "channel_scores": {},
-                        "bm25_score": hit.bm25_score,
-                    },
-                )
-                slot["score"] = float(slot["score"]) + 1.0 / (self.rrf_k + rank + 1)
-                slot["channels"].append(name)  # type: ignore[union-attr]
-                slot["channel_scores"][name] = float(hit.score)  # type: ignore[index]
-                # Keep the most informative bm25_score (non-None wins).
-                if slot["bm25_score"] is None and hit.bm25_score is not None:
-                    slot["bm25_score"] = hit.bm25_score
-
-        ordered = sorted(
-            fused.items(), key=lambda kv: (-float(kv[1]["score"]), kv[0])
-        )
-
-        results: list[BM25ScoredChunk] = []
-        for _, slot in ordered[:top_k]:
-            base: BM25ScoredChunk = slot["hit"]  # type: ignore[assignment]
-            results.append(
-                BM25ScoredChunk(
-                    chunk=base.chunk,
-                    score=float(slot["score"]),
-                    bm25_score=slot["bm25_score"],  # type: ignore[arg-type]
-                    rerank_score=None,
-                    channels=list(slot["channels"]),  # type: ignore[arg-type]
-                    channel_scores=dict(slot["channel_scores"]),  # type: ignore[arg-type]
+            per_head.append(
+                (
+                    name,
+                    head.search(
+                        query,
+                        chunk_list,
+                        top_k=top_k,
+                        workspace_id=workspace_id,
+                        use_cache=use_cache,
+                    ),
                 )
             )
-        return results
+
+        chunk_by_id: dict[str, Chunk] = {}
+        for _, hits in per_head:
+            for hit in hits:
+                chunk_by_id.setdefault(hit.chunk.chunk_id, hit.chunk)
+        if not chunk_by_id:
+            return []
+
+        python_rows: list[_FusedRrfRow] | None = None
+        python_ms: float | None = None
+        rust_rows: list[_FusedRrfRow] | None = None
+        rust_ms: float | None = None
+
+        if self.use_rust_rrf:
+            rust_started_at = perf_counter()
+            rust_rows = _rrf_fuse_rust(per_head, top_k=top_k, rrf_k=self.rrf_k)
+            rust_ms = (perf_counter() - rust_started_at) * 1000.0
+            if rust_rows is not None:
+                primary_rows = rust_rows
+            else:
+                python_started_at = perf_counter()
+                python_rows = _rrf_fuse_python(per_head, top_k=top_k, rrf_k=self.rrf_k)
+                python_ms = (perf_counter() - python_started_at) * 1000.0
+                primary_rows = python_rows
+        else:
+            python_started_at = perf_counter()
+            python_rows = _rrf_fuse_python(per_head, top_k=top_k, rrf_k=self.rrf_k)
+            python_ms = (perf_counter() - python_started_at) * 1000.0
+            primary_rows = python_rows
+
+        if self.shadow_compare:
+            if python_rows is None:
+                python_started_at = perf_counter()
+                python_rows = _rrf_fuse_python(per_head, top_k=top_k, rrf_k=self.rrf_k)
+                python_ms = (perf_counter() - python_started_at) * 1000.0
+            if rust_rows is None:
+                rust_started_at = perf_counter()
+                rust_rows = _rrf_fuse_rust(per_head, top_k=top_k, rrf_k=self.rrf_k)
+                rust_ms = (perf_counter() - rust_started_at) * 1000.0
+
+            if rust_rows is None:
+                _log.debug("Rust RRF shadow compare skipped: extension unavailable")
+            elif _fused_signature(python_rows) != _fused_signature(rust_rows):
+                _log.warning(
+                    "RRF parity mismatch (python_top=%s rust_top=%s)",
+                    [row.chunk_id for row in python_rows[:5]],
+                    [row.chunk_id for row in rust_rows[:5]],
+                )
+            elif python_ms is not None and rust_ms is not None:
+                _log.info(
+                    "RRF parity ok (python_ms=%.3f rust_ms=%.3f)",
+                    python_ms,
+                    rust_ms,
+                )
+
+        return _materialize_results(primary_rows, chunk_by_id)

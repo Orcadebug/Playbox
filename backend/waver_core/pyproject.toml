@@ -1,0 +1,12 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "waver-core"
+version = "0.1.0"
+description = "Rust core primitives for Waver retrieval"
+requires-python = ">=3.10"
+
+[tool.maturin]
+module-name = "waver_core"

@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     waver_budget_expansion_factor: int = 3
     waver_multihead: bool = True
     waver_rrf_k: int = 60
+    waver_rust_rrf: bool = False
+    waver_rust_rrf_shadow: bool = False
     waver_candidate_cap: int = 2000
     waver_trie_max_patterns: int = 2000
     waver_trie_phrase_ngram: int = 2
