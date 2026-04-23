@@ -93,6 +93,18 @@ Key backend areas:
   source execution, planner behavior, negation/polarity, sentence scorer, adaptive
   budget, multi-head RRF, API-key work in progress, and promise evals.
 
+Native retrieval runtime:
+
+- `backend/waver_core/` now provides the Stage-0 prefilter used by the span executor.
+  On `x86_64`, it runtime-dispatches to AVX-512 first, then AVX2, and falls back to
+  scalar scanning on non-x86 targets.
+- The Rust MRL runtime expects an externally provisioned bundle under
+  `backend/models/mrl/` with `model.onnx` and `tokenizer.json` present. Optional
+  tokenizer metadata files can sit beside them.
+- The cross-encoder reranker gRPC service and the `backend/waver_ghost/` edge proxy are
+  still separate architectural layers; this repo change does not fold them back into the
+  main web loop.
+
 Frontend status:
 
 - The Next.js app is intentionally secondary to the API.
@@ -241,7 +253,8 @@ Important environment variables:
   built-in deterministic semantic projection (alias dict + stable hashing) is used — no
   model artifact required for local development.
 - `WAVER_MODEL_DIR`, `WAVER_RERANKER_MODEL`, and reranker settings: cross-encoder
-  reranker config knobs.
+  reranker config knobs. When the Matryoshka runtime is provisioned, its bundle should
+  live under `backend/models/mrl/` with `model.onnx` and `tokenizer.json`.
 - `MAX_UPLOAD_BYTES`: upload size ceiling.
 
 ## Promise Eval

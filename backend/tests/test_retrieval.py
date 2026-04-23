@@ -398,6 +398,25 @@ def test_mrl_projection_records_runtime_fallback_when_artifact_present(
     assert projection.fallback_reason == "mrl_runtime_failed"
 
 
+def test_mrl_projection_falls_back_when_artifact_missing(
+    tmp_path,
+) -> None:  # type: ignore[no-untyped-def]
+    config = ProjectionConfig(hash_features=64, dim=16)
+    projection = MrlProjection(
+        model_path=tmp_path / "missing.onnx",
+        config=config,
+        fallback=DeterministicSemanticProjection(config),
+    )
+
+    query_vec = projection.encode_query("billing refund")
+    chunk_vecs = projection.encode_chunks(_sps_chunks([("duplicate charge", "ticket.txt")]))
+
+    assert projection.using_fallback is True
+    assert projection.fallback_reason == "mrl_artifact_unavailable"
+    assert query_vec.shape == (config.dim,)
+    assert chunk_vecs.shape == (1, config.dim)
+
+
 # ---------------------------------------------------------------------------
 # Negation / polarity feature tests
 # ---------------------------------------------------------------------------
@@ -726,6 +745,47 @@ def test_stage0_prefilter_real_rust_matches_python_when_extension_installed() ->
     assert [window.window_id for window in rust_hits] == [
         window.window_id for window in python_hits
     ]
+
+
+def test_stage0_prefilter_real_rust_matches_python_edge_cases_when_extension_installed() -> None:
+    module = pytest.importorskip("waver_core")
+    if not hasattr(module, "prefilter_windows"):
+        pytest.skip("Rust prefilter is not exported")
+
+    from app.retrieval.source_executor import SourceWindow
+    from app.retrieval.span_executor import _prefilter_windows, _python_prefilter_windows
+
+    windows = [
+        SourceWindow(
+            window_id=f"w-{index}",
+            record_id=f"r-{index}",
+            source_id=f"s-{index}",
+            source_name=f"doc-{index}.txt",
+            source_type="raw",
+            source_origin="raw",
+            parser_name="plaintext",
+            text=text,
+        )
+        for index, text in enumerate(
+            [
+                "",
+                "A",
+                "å",
+                "ab",
+                "abc",
+                "cab",
+                "unrelated payload",
+            ],
+            start=1,
+        )
+    ]
+
+    for query, limit in [("Å", 4), ("ab", 4), ("abc", 4)]:
+        rust_hits = _prefilter_windows(query, windows, limit=limit)
+        python_hits = _python_prefilter_windows(query, windows, limit=limit)
+        assert [window.window_id for window in rust_hits] == [
+            window.window_id for window in python_hits
+        ]
 
 
 def test_multihead_empty_chunks_returns_empty() -> None:
