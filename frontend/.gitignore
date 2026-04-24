@@ -8,5 +8,6 @@ coverage
 dist
 out
 *.log
+*.tsbuildinfo
 
 .vercel
