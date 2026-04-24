@@ -81,7 +81,8 @@ class SourceService:
         await self.session.flush()
 
         for index, document in enumerate(documents):
-            title = document.metadata.get("title") if isinstance(document.metadata.get("title"), str) else None
+            raw_title = document.metadata.get("title")
+            title = raw_title if isinstance(raw_title, str) else None
             self.session.add(
                 Document(
                     source_id=source.id,
@@ -97,10 +98,13 @@ class SourceService:
         invalidate_workspace_cache(workspace_id)
         return self._serialize_source(source, document_count=len(documents))
 
-    def _serialize_source(self, source: Source, document_count: int | None = None) -> dict[str, Any]:
+    def _serialize_source(
+        self, source: Source, document_count: int | None = None
+    ) -> dict[str, Any]:
         count = document_count
         if count is None:
-            count = int(source.source_metadata.get("document_count", 0)) if source.source_metadata else 0
+            meta = source.source_metadata
+            count = int(meta.get("document_count", 0)) if meta else 0
         return {
             "id": source.id,
             "workspace_id": source.workspace_id,

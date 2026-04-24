@@ -27,7 +27,7 @@ class RemoteRerankerClient:
     def rerank(
         self,
         query: str,
-        candidates: list["BM25ScoredChunk"],
+        candidates: list[BM25ScoredChunk],
         top_k: int,
     ) -> list[tuple[str, float]] | None:
         try:
@@ -37,7 +37,10 @@ class RemoteRerankerClient:
             return None
 
         try:
-            from services.reranker.generated import reranker_pb2, reranker_pb2_grpc  # type: ignore[import-not-found]
+            from services.reranker.generated import (  # type: ignore[import-not-found]
+                reranker_pb2,
+                reranker_pb2_grpc,
+            )
         except Exception:
             _log.warning("reranker gRPC stubs not generated; remote reranker disabled")
             return None

@@ -47,7 +47,10 @@ def quantize_model(model_path: Path) -> Path:
     quantized_path = model_path.parent / "model_quantized.onnx"
     print(f"  Quantizing {model_path.name} → {quantized_path.name} …")
     try:
-        from onnxruntime.quantization import QuantType, quantize_dynamic  # type: ignore[import-untyped]
+        from onnxruntime.quantization import (  # type: ignore[import-untyped]
+            QuantType,
+            quantize_dynamic,
+        )
 
         quantize_dynamic(
             model_input=str(model_path),
