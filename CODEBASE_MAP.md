@@ -33,24 +33,32 @@ backend/
 │   │   └── sources.py          # Source/document CRUD
 │   │
 │   ├── retrieval/
-│   │   ├── pipeline.py         # Parses, chunks, retrieves, reranks, builds span payloads
-│   │   ├── source_executor.py  # SourceRecord/SourceWindow creation from parsed docs
-│   │   ├── planner.py          # Query-time budget + channel planning
-│   │   ├── channels.py         # Exact/proxy/structure channel scoring
-│   │   ├── span_executor.py    # Query-time span execution and phase outputs
-│   │   ├── chunker.py          # Exact-offset text chunking with overlap
-│   │   ├── tokenizer.py        # Tokenization logic
-│   │   ├── bm25.py             # BM25 scoring wrapper
-│   │   ├── bm25_cache.py       # Stored-only BM25 index caching
-│   │   ├── reranker.py         # ONNX cross-encoder inference
-│   │   ├── retriever.py        # Unified retriever entry point
-│   │   ├── trie.py             # Cortical trie index (prefix structure)
-│   │   ├── cortical.py         # Cortical Trie Search retriever
-│   │   ├── sparse_projection.py # Sparse vector projection
-│   │   ├── diffusion.py        # Score diffusion over adjacency graph
-│   │   ├── adjacency.py        # Chunk adjacency graph
-│   │   ├── gating.py           # Retrieval gating / routing
-│   │   └── query_patterns.py   # Query pattern detection
+│   │   ├── pipeline.py          # Adaptive budget, reranking, span building
+│   │   ├── source_executor.py   # SourceRecord/SourceWindow creation from parsed docs
+│   │   ├── planner.py           # Query-time budget + channel planning
+│   │   ├── channels.py          # Exact/proxy/structure channel scoring
+│   │   ├── span_executor.py     # Query-time span execution and phase outputs
+│   │   ├── chunker.py           # Exact-offset text chunking with overlap
+│   │   ├── tokenizer.py         # Tokenization logic
+│   │   ├── bm25.py              # BM25 scoring wrapper
+│   │   ├── bm25_cache.py        # Stored-only BM25 index caching
+│   │   ├── reranker.py          # ONNX cross-encoder inference (+ remote gRPC seam)
+│   │   ├── retriever.py         # MultiHeadRetriever (RRF over sps/bm25/phrase)
+│   │   ├── sps.py               # SpsRetriever (BM25 + sparse projection cosine)
+│   │   ├── exact_phrase.py      # ExactPhraseRetriever (substring/n-gram matches)
+│   │   ├── sparse_projection.py # SparseProjection + deterministic hash projection + polarity injection
+│   │   ├── sentence_scorer.py   # Sentence-level span refinement inside top chunk
+│   │   ├── rust_core.py         # Python wrappers around waver_core Rust exports
+│   │   ├── eval_harness.py      # Retrieval eval harness
+│   │   ├── eval_layers.py       # Per-layer eval probes
+│   │   ├── eval_dynamic.py      # Dynamic corpus eval (add/delete/mutate/reorder)
+│   │   ├── eval_fixtures/       # AI-authored eval corpora
+│   │   ├── trie.py              # Cortical trie index (prefix structure)
+│   │   ├── cortical.py          # Cortical Trie Search retriever
+│   │   ├── diffusion.py         # Score diffusion over adjacency graph
+│   │   ├── adjacency.py         # Chunk adjacency graph
+│   │   ├── gating.py            # Retrieval gating / routing
+│   │   └── query_patterns.py    # Query pattern detection
 │   │
 │   ├── answer/
 │   │   ├── generator.py        # Opt-in LLM answer generation (OpenRouter/Anthropic)
@@ -87,18 +95,40 @@ backend/
 │       └── session.py          # Database session management
 │
 ├── tests/
-│   ├── test_retrieval.py       # Retrieval pipeline/span/cache tests
-│   ├── test_search_service.py  # Raw source, connector, answer-mode tests
-│   ├── test_cortical.py        # Cortical retrieval tests
-│   └── test_parsers.py         # Parser tests
+│   ├── test_retrieval.py           # Retrieval pipeline/span/cache tests
+│   ├── test_search_service.py      # Raw source, connector, answer-mode tests
+│   ├── test_cortical.py            # Cortical retrieval tests
+│   ├── test_parsers.py             # Parser tests
+│   ├── test_planner.py             # Planner tier/budget tests
+│   ├── test_span_executor.py       # Span executor phase tests
+│   ├── test_source_executor.py     # SourceRecord/SourceWindow tests
+│   ├── test_ephemeral_api.py       # Raw / connector path tests
+│   ├── test_eval_harness.py        # Eval harness unit tests
+│   ├── test_eval_layers.py         # Per-layer eval probes
+│   ├── test_eval_dynamic.py        # Dynamic corpus mutations
+│   ├── test_reranker_remote.py     # Remote reranker fallback tests
+│   ├── test_ghost.py               # GhostProxy bloom/CMS tests
+│   └── fixtures/                   # Eval fixtures (tickets, mutations)
 │
 ├── scripts/
-│   └── download_models.py      # Download BM25/reranker models
+│   ├── download_models.py          # Fetch reranker + projection artifacts
+│   ├── train_projection.py         # Train sparse projection on corpus
+│   ├── run_retrieval_eval.py       # Manual eval run
+│   └── run_vision_eval.py          # Vision/promise eval driver
 │
-├── alembic/                    # Database migrations
-├── pyproject.toml              # uv dependencies
-├── uv.lock                     # Lockfile
-└── Dockerfile                  # Multi-stage build
+├── waver_core/                     # Rust pyo3 core (rrf_fuse, prefilter_windows,
+│                                   #   mrl_encode, phrase_search, RustBm25Index).
+│                                   #   Built via `maturin develop --release`.
+├── waver_ghost/                    # GhostProxy: fixed-memory Bloom + Count-Min Sketch
+│                                   #   for edge-side zero-hit short-circuit.
+├── services/
+│   └── reranker/                   # Optional stage-2 gRPC reranker service
+│                                   #   (WAVER_RERANKER_GRPC_TARGET).
+│
+├── alembic/                        # Database migrations
+├── pyproject.toml                  # uv dependencies + ruff config
+├── uv.lock                         # Lockfile
+└── Dockerfile                      # Multi-stage build
 ```
 
 **Key Flow:**
@@ -109,11 +139,17 @@ load saved sources + raw_sources + connector_configs
   ↓
 parse + source/window execution with exact source offsets
   ↓
-planner selects query budget/channels
+planner selects tier/budget/channels
   ↓
-exact/proxy/structure first pass over windows
+Stage-0 trigram prefilter (waver_core.prefilter_windows, AVX-512/AVX2/scalar)
   ↓
-rerank shortlist
+heads run in parallel: sps (BM25+projection), bm25, exact_phrase
+  ↓
+RRF fusion (Python, or waver_core.rrf_fuse when WAVER_RUST_RRF=true)
+  ↓
+rerank shortlist (remote gRPC → local ONNX → heuristic)
+  ↓
+sentence-level refinement of primary_span
   ↓
 return phased SSE events + final retrieval payload
   ↓
@@ -236,7 +272,19 @@ OPENROUTER_API_KEY=...            # OpenRouter (LLM answers)
 ANTHROPIC_API_KEY=...             # Anthropic (LLM answers)
 NEXT_PUBLIC_API_BASE_URL=...      # Frontend → backend URL
 WAVER_RERANKER_MODEL=...          # Cross-encoder model name
+WAVER_RERANKER_GRPC_TARGET=...    # Optional remote reranker endpoint
+WAVER_RETRIEVER=sps               # sps (default) | bm25 | cortical
+WAVER_SPS_ALPHA=0.6               # BM25 vs projection blend
+WAVER_MULTIHEAD=true              # RRF fusion sps/bm25/phrase
+WAVER_RRF_K=60                    # RRF damping
+WAVER_RUST_RRF=false              # Run rrf_fuse via waver_core (Rust)
+WAVER_RUST_RRF_SHADOW=false       # Shadow-log Rust vs Python fusion deltas
+WAVER_SPS_NEGATION=true           # Polarity-aware ranking
+WAVER_ADAPTIVE_BUDGET=true        # Expand budget on flat score spread
+PROJECTION_MODEL_PATH=...         # sparse projection .npz (optional)
+WAVER_ORT_DYLIB_PATH=...          # ONNX Runtime shared lib for Rust MRL
 ENABLE_LIVE_CONNECTORS=true       # Enable external live connector fetches
+MAX_UPLOAD_BYTES=52428800         # 50 MB default
 CORS_ORIGINS=...                  # Allowed origins
 ```
 
@@ -250,11 +298,14 @@ See `.env.example` for full list.
 - `fastapi` — web framework
 - `sqlalchemy` — ORM
 - `alembic` — migrations
-- `PyStemmer` — optional stemming for BM25 tokenization
+- `bm25s` + `PyStemmer` — BM25 scoring / optional stemming
+- `tokenizers` — fast tokenization
 - `onnxruntime` — cross-encoder reranker inference
 - `pyahocorasick` — query pattern scanning for exact spans/cortical retrieval
 - `numpy`, `scipy`, `scikit-learn` — retrieval math/projection helpers
-- `pymupdf`, `beautifulsoup4` — parsers
+- `pymupdf`, `pypdfium2`, `beautifulsoup4` — parsers
+- `structlog` — structured logging
+- `maturin` / `pyo3` (build-time) — native `waver_core` compilation
 
 **Frontend:**
 - `next` — framework

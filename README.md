@@ -93,17 +93,32 @@ Key backend areas:
   source execution, planner behavior, negation/polarity, sentence scorer, adaptive
   budget, multi-head RRF, API-key work in progress, and promise evals.
 
-Native retrieval runtime:
+Native retrieval runtime (`backend/waver_core/`, Rust via `pyo3`/`maturin`):
 
-- `backend/waver_core/` now provides the Stage-0 prefilter used by the span executor.
-  On `x86_64`, it runtime-dispatches to AVX-512 first, then AVX2, and falls back to
-  scalar scanning on non-x86 targets.
-- The Rust MRL runtime expects an externally provisioned bundle under
-  `backend/models/mrl/` with `model.onnx` and `tokenizer.json` present. Optional
-  tokenizer metadata files can sit beside them.
-- The cross-encoder reranker gRPC service and the `backend/waver_ghost/` edge proxy are
-  still separate architectural layers; this repo change does not fold them back into the
-  main web loop.
+- `prefilter_windows` — Stage-0 byte-level trigram overlap prefilter used by the span
+  executor. On `x86_64`, runtime-dispatches to AVX-512 first, then AVX2, with scalar
+  fallback on non-x86 targets.
+- `rrf_fuse` — Rust RRF fusion for the multi-head retriever. Gated by
+  `WAVER_RUST_RRF=true`, with `WAVER_RUST_RRF_SHADOW=true` running Rust alongside
+  Python and logging deltas without swapping.
+- `mrl_encode` — ONNX-backed Matryoshka embedding runtime. Expects a bundle under
+  `backend/models/mrl/` with `model.onnx` and `tokenizer.json` (optional tokenizer
+  metadata files can sit beside them).
+- `phrase_search`, `splade_encode`, `RustBm25Index` — additional exports; the Python
+  retrieval layer records `using_fallback=True` + `fallback_reason` on telemetry
+  whenever a Rust path cannot load or execute.
+
+Architectural layers that are **not** wired into the main web loop yet:
+
+- `backend/waver_ghost/` — `GhostProxy` library: fixed-memory Bloom (bit-array,
+  Kirsch–Mitzenmacher double-hashing over `blake2b`) and Count-Min Sketch
+  (`array("I")` with explicit `< 0xFFFFFFFF` saturation guard). Memory is O(1) in
+  payload size (~128 KiB bloom + ~2 MiB CMS). Auto-`reset()` at the
+  `approx_items()` threshold keeps FPR bounded across many payloads. Intended for
+  edge-side zero-hit short-circuit on chunked uploads; see its README.
+- `backend/services/reranker/` — optional stage-2 gRPC reranker. Preferred when
+  `WAVER_RERANKER_GRPC_TARGET` is set; falls through to local ONNX, then heuristic.
+  gRPC stubs are not vendored (see the service README for generation).
 
 Frontend status:
 
@@ -245,6 +260,10 @@ Important environment variables:
 - `WAVER_MULTIHEAD`: enables RRF fusion across SPS, BM25, and exact-phrase heads
   (default `true`).
 - `WAVER_RRF_K`: RRF damping constant (default `60`).
+- `WAVER_RUST_RRF`: execute RRF fusion via `waver_core.rrf_fuse` when `true`
+  (default `false`).
+- `WAVER_RUST_RRF_SHADOW`: shadow-run Rust fusion alongside Python and log deltas
+  without swapping the primary path (default `false`).
 - `WAVER_ADAPTIVE_BUDGET`: expand candidate pool when score spread is flat (default `true`).
 - `WAVER_BUDGET_SPREAD_THRESHOLD`: spread below which budget expands (default `0.15`).
 - `WAVER_SPS_NEGATION`: polarity feature injection — separates negated from affirmed
@@ -252,10 +271,16 @@ Important environment variables:
 - `PROJECTION_MODEL_PATH`: path to a trained `projection.npz` matrix. If absent, the
   built-in deterministic semantic projection (alias dict + stable hashing) is used — no
   model artifact required for local development.
+- `WAVER_RERANKER_GRPC_TARGET`: optional remote reranker endpoint. When set, the
+  backend prefers the gRPC reranker; when unset or unreachable, it falls back to the
+  local ONNX cross-encoder, then to heuristic reranking.
+- `WAVER_ORT_DYLIB_PATH` / `ORT_DYLIB_PATH`: ONNX Runtime shared library used by the
+  Rust MRL path. Falls back to the Python `onnxruntime` package when unset.
 - `WAVER_MODEL_DIR`, `WAVER_RERANKER_MODEL`, and reranker settings: cross-encoder
   reranker config knobs. When the Matryoshka runtime is provisioned, its bundle should
   live under `backend/models/mrl/` with `model.onnx` and `tokenizer.json`.
-- `MAX_UPLOAD_BYTES`: upload size ceiling.
+- `WAVER_TINY_MAX_BYTES` / `WAVER_MEDIUM_MAX_BYTES`: planner tier thresholds.
+- `MAX_UPLOAD_BYTES`: upload size ceiling (default 50 MB).
 
 ## Promise Eval
 
@@ -354,20 +379,29 @@ High-priority product and engineering work:
 ```text
 backend/
   app/
-    api/          FastAPI routers
-    answer/       Optional LLM answer generation
-    connectors/   Webhook and Slack connector adapters
-    models/       SQLAlchemy models
-    parsers/      File/content parsers
-    retrieval/    Planner, channels, span executor, rerankers, evals
-    schemas/      API/search schemas
-    services/     Search and saved-source orchestration
-  tests/          Backend pytest suite and eval fixtures
+    api/             FastAPI routers
+    answer/          Optional LLM answer generation
+    connectors/      Webhook and Slack connector adapters
+    models/          SQLAlchemy models
+    parsers/         File/content parsers
+    retrieval/       Planner, channels, span executor, SPS/BM25/phrase heads,
+                     RRF retriever, sentence refinement, rerankers, evals,
+                     and rust_core.py wrapper around the native core
+    schemas/         API/search schemas
+    services/        Search and saved-source orchestration
+  tests/             Backend pytest suite and eval fixtures
+  scripts/           download_models.py, train_projection.py, run_*_eval.py
+  waver_core/        Rust pyo3 core (rrf_fuse, prefilter_windows, mrl_encode,
+                     phrase_search, RustBm25Index). Build: `maturin develop --release`
+  waver_ghost/       GhostProxy — fixed-memory Bloom + Count-Min Sketch
+                     (edge-side zero-hit short-circuit, library-only today)
+  services/
+    reranker/        Optional stage-2 gRPC reranker contract
 
 frontend/
-  src/app/        Next.js app routes
-  src/components/ Reusable UI components
-  src/lib/        Frontend API/demo client code
+  src/app/           Next.js app routes
+  src/components/    Reusable UI components
+  src/lib/           Frontend API/demo client code
 ```
 
 Do not put new product code in the top-level `Waver/` scaffold.
