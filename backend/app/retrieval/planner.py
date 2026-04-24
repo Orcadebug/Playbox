@@ -60,8 +60,8 @@ def build_query_plan(
     else:
         window_tier = "huge"
         scan_limit = min(window_count, max(1_500, k * 90))
-        candidate_limit = min(max(300, k * 35), 900)
-        rerank_limit = min(max(200, k * 20), 260)
+        candidate_limit = min(window_count, settings.waver_stage1_mrl_input_limit)
+        rerank_limit = min(candidate_limit, settings.waver_mrl_rerank_limit)
         metadata_prefilter = True
 
     if bytes_loaded <= settings.waver_tiny_max_bytes:
@@ -82,19 +82,19 @@ def build_query_plan(
             metadata_prefilter = False
         else:
             scan_limit = min(window_count, max(1_500, k * 90))
-            candidate_limit = min(max(300, k * 35), 900)
-            rerank_limit = min(max(200, k * 20), 260)
+            candidate_limit = min(window_count, settings.waver_stage1_mrl_input_limit)
+            rerank_limit = min(candidate_limit, settings.waver_mrl_rerank_limit)
             metadata_prefilter = True
 
     if "connector" in origins and tier != "tiny":
         scan_limit = min(window_count, int(scan_limit * 0.9))
 
     if budget_hint == "thorough":
-        candidate_limit = int(candidate_limit * 2)
-        rerank_limit = int(rerank_limit * 1.5)
+        candidate_limit = min(window_count, int(candidate_limit * 2))
+        rerank_limit = min(candidate_limit, int(rerank_limit * 1.5))
     elif budget_hint == "fast":
         candidate_limit = max(k * 5, candidate_limit // 2)
-        rerank_limit = max(k * 3, rerank_limit // 2)
+        rerank_limit = min(candidate_limit, max(k * 3, rerank_limit // 2))
 
     partial = window_count > scan_limit
     use_cache = cacheable and tier != "huge" and origins.issubset({"stored"})

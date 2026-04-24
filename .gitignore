@@ -18,6 +18,7 @@ node_modules/
 *.sqlite3
 *.db
 backend/.venv/
+backend/.reports/
 backend/models/
 backend/waver_core/.venv/
 backend/waver_core/uv.lock

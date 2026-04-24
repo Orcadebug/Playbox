@@ -89,12 +89,19 @@ def build_source_records(
     records: list[SourceRecord] = []
 
     for source_index, document in enumerate(documents):
-        parser = detector.detect(
-            file_name=document.file_name,
-            content=document.data,
-            media_type=document.media_type,
-        )
         source_metadata = dict(document.metadata or {})
+        forced_parser_name = source_metadata.get("parser_name")
+        parser = (
+            detector.registry.get(str(forced_parser_name))
+            if forced_parser_name is not None
+            else None
+        )
+        if parser is None:
+            parser = detector.detect(
+                file_name=document.file_name,
+                content=document.data,
+                media_type=document.media_type,
+            )
         parser_name = str(source_metadata.get("parser_name") or parser.name)
         source_name = document.file_name
         source_type = str(source_metadata.get("source_type") or "stored")

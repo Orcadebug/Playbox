@@ -15,6 +15,17 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     debug: bool = False
     database_url: str = "sqlite+aiosqlite:///./waver.db"
+    waver_production_mode: bool = False
+    waver_api_keys_required: bool = False
+    waver_default_requests_per_minute: int = 120
+    waver_default_bytes_per_minute: int = 5 * 1024 * 1024
+    waver_max_raw_bytes: int = 1 * 1024 * 1024
+    waver_max_raw_sources: int = 20
+    waver_max_connectors: int = 3
+    waver_max_top_k: int = 50
+    waver_max_windows: int = 5_000
+    waver_latency_gate_p95_ms: float = 200.0
+    waver_latency_gate_max_bytes: int = 64 * 1024
     openrouter_api_key: str | None = None
     anthropic_api_key: str | None = None
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
@@ -25,6 +36,8 @@ class Settings(BaseSettings):
     reranker_max_length: int = 512
     reranker_quantized: bool = True
     reranker_max_candidates: int = 200
+    waver_mrl_query_prefix: str = "Represent this sentence for searching relevant passages: "
+    waver_mrl_document_prefix: str = ""
     bm25_cache_ttl: float = 300.0
     bm25_cache_max_entries: int = 10
     bm25_use_stemming: bool = True
@@ -45,6 +58,11 @@ class Settings(BaseSettings):
     waver_medium_max_bytes: int = 32 * 1024 * 1024
     waver_payload_cache_ttl: float = 300.0
     waver_payload_cache_max_entries: int = 10
+    waver_session_corpus_default_ttl_seconds: int = 86_400
+    waver_session_corpus_max_ttl_seconds: int = 7 * 86_400
+    waver_stage1_mrl_input_limit: int = 5000
+    waver_mrl_rerank_limit: int = 50
+    waver_ghost_enabled: bool = True
     waver_candidate_cap: int = 2000
     waver_trie_max_patterns: int = 2000
     waver_trie_phrase_ngram: int = 2

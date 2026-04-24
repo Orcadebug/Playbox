@@ -90,12 +90,56 @@ impl GramSink for OverlapSink<'_> {
     }
 }
 
+#[cfg(target_arch = "x86_64")]
+struct CollectSink {
+    grams: Vec<u32>,
+}
+
+#[cfg(target_arch = "x86_64")]
+impl GramSink for CollectSink {
+    fn push(&mut self, gram_id: u32) {
+        self.grams.push(gram_id);
+    }
+}
+
 pub fn prefilter_windows_impl(
     query: String,
     windows: Vec<(String, String)>,
     top_k: usize,
 ) -> Vec<(String, u32)> {
     prefilter_windows_with_mode(query, windows, top_k, KernelMode::Auto)
+}
+
+pub fn visit_trigrams_avx512_impl(text: String) -> Result<Vec<u32>, String> {
+    let lowered = lowercase_bytes(&text);
+    if lowered.len() < 3 {
+        return Ok(Vec::new());
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    {
+        use std::arch::is_x86_feature_detected;
+
+        if !is_x86_feature_detected!("avx512f")
+            || !is_x86_feature_detected!("avx512bw")
+            || !is_x86_feature_detected!("avx512vl")
+        {
+            return Err("AVX-512 trigram kernel is not available on this CPU".to_string());
+        }
+
+        let mut sink = CollectSink {
+            grams: Vec::with_capacity(lowered.len() - 2),
+        };
+        unsafe {
+            visit_trigrams_avx512(&lowered, &mut sink);
+        }
+        return Ok(sink.grams);
+    }
+
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        Err("AVX-512 trigram kernel is only available on x86_64".to_string())
+    }
 }
 
 fn prefilter_windows_with_mode(
