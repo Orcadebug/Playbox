@@ -385,6 +385,8 @@ class MrlProjection:
     fallback: DeterministicSemanticProjection = field(
         default_factory=DeterministicSemanticProjection
     )
+    query_prefix: str = ""
+    document_prefix: str = ""
     using_fallback: bool = False
     fallback_reason: str | None = None
 
@@ -411,9 +413,11 @@ class MrlProjection:
                 return np.vstack([self.fallback.encode_query(text) for text in texts])
             return self.fallback.encode_chunks([_StubChunk(text) for text in texts])
         try:
+            prefix = self.query_prefix if is_query else self.document_prefix
+            encoded_texts = [_with_prefix(text, prefix) for text in texts]
             rows = mrl_encode(
                 str(self.model_path),
-                list(texts),
+                encoded_texts,
                 self.config.dim,
                 is_query,
             )
@@ -426,6 +430,12 @@ class MrlProjection:
             if is_query:
                 return np.vstack([self.fallback.encode_query(text) for text in texts])
             return self.fallback.encode_chunks([_StubChunk(text) for text in texts])
+
+
+def _with_prefix(text: str, prefix: str) -> str:
+    if not prefix:
+        return text
+    return text if text.startswith(prefix) else f"{prefix}{text}"
 
 
 class _StubChunk:

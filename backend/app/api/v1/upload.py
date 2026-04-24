@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import AuthContext, get_auth_context
 from app.config import get_settings
 from app.db import get_session
 from app.services.sources import SourceService
@@ -17,6 +18,7 @@ async def upload_sources(
     raw_text_name: str | None = Form(default=None),
     workspace_id: str = Form(default="default"),
     session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(get_auth_context),
 ) -> dict:
     if not files and not raw_text:
         raise HTTPException(
@@ -50,7 +52,7 @@ async def upload_sources(
             file_name=file_name,
             content=payload,
             media_type=upload.content_type,
-            workspace_id=workspace_id,
+            workspace_id=auth.workspace_id if auth.authenticated else workspace_id,
         )
         created_sources.append(created)
 
@@ -58,9 +60,8 @@ async def upload_sources(
         created = await service.create_from_text(
             name=raw_text_name or "Pasted text",
             text=raw_text,
-            workspace_id=workspace_id,
+            workspace_id=auth.workspace_id if auth.authenticated else workspace_id,
         )
         created_sources.append(created)
 
     return {"sources": created_sources}
-

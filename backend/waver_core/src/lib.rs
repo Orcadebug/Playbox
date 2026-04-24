@@ -12,7 +12,7 @@ use crate::bm25::RustBm25Index;
 use crate::mrl::mrl_encode_impl;
 use crate::phrase::phrase_search_impl;
 use crate::semantic::splade_encode_impl;
-use crate::simd_ngram::prefilter_windows_impl;
+use crate::simd_ngram::{prefilter_windows_impl, visit_trigrams_avx512_impl};
 
 type HeadPayload = Vec<(String, Vec<(String, f64, Option<f64>)>)>;
 type FusedRow = (String, f64, Vec<String>, HashMap<String, f64>, Option<f64>);
@@ -88,6 +88,28 @@ fn prefilter_windows(
 }
 
 #[pyfunction]
+fn extract_direct_embeddings(rows: Vec<Vec<f32>>, dim: usize) -> PyResult<Vec<Vec<f32>>> {
+    rows.into_iter()
+        .map(|row| {
+            if row.len() < dim {
+                Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                    "MRL model output dimension {} is smaller than requested dim {}",
+                    row.len(),
+                    dim
+                )))
+            } else {
+                Ok(row.into_iter().take(dim).collect())
+            }
+        })
+        .collect()
+}
+
+#[pyfunction]
+fn visit_trigrams_avx512(text: String) -> PyResult<Vec<u32>> {
+    visit_trigrams_avx512_impl(text).map_err(pyo3::exceptions::PyRuntimeError::new_err)
+}
+
+#[pyfunction]
 fn splade_encode(
     model_path: String,
     texts: Vec<String>,
@@ -113,6 +135,8 @@ fn waver_core(_py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(rrf_fuse, module)?)?;
     module.add_function(wrap_pyfunction!(phrase_search, module)?)?;
     module.add_function(wrap_pyfunction!(prefilter_windows, module)?)?;
+    module.add_function(wrap_pyfunction!(extract_direct_embeddings, module)?)?;
+    module.add_function(wrap_pyfunction!(visit_trigrams_avx512, module)?)?;
     module.add_function(wrap_pyfunction!(splade_encode, module)?)?;
     module.add_function(wrap_pyfunction!(mrl_encode, module)?)?;
     Ok(())

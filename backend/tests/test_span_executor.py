@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import numpy as np
+
 from app.parsers.base import ParserDetector, build_default_parser_registry
 from app.parsers.plaintext import PlainTextParser
 from app.retrieval.planner import QueryPlan
@@ -308,6 +310,158 @@ def test_span_executor_applies_mrl_pruning_before_rerank(
 
     assert outcome.execution["mrl_applied"] is True
     assert outcome.execution["shortlisted_candidates"] == 3
+    assert outcome.execution["mrl_input_count"] == 10
+    assert outcome.execution["mrl_output_count"] == 3
+
+
+def test_span_executor_applies_stage0_before_candidate_scoring(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    class RecordingProjection:
+        def __init__(self) -> None:
+            self.chunk_count = 0
+
+        def encode_query(self, query: str):  # type: ignore[no-untyped-def]
+            return np.ones(4, dtype=np.float32)
+
+        def encode_chunks(self, chunks):  # type: ignore[no-untyped-def]
+            self.chunk_count = len(chunks)
+            return np.ones((len(chunks), 4), dtype=np.float32)
+
+        def score(self, query_vec, chunk_vecs):  # type: ignore[no-untyped-def]
+            del query_vec
+            return np.ones(len(chunk_vecs), dtype=np.float32)
+
+    def fake_build_query_plan(**kwargs):  # type: ignore[no-untyped-def]
+        return QueryPlan(
+            tier="huge",
+            window_tier="huge",
+            byte_tier="tiny",
+            channels=("exact", "semantic", "structure"),
+            window_count=int(kwargs["window_count"]),
+            bytes_loaded=int(kwargs.get("bytes_loaded", 0)),
+            scan_budget_bytes=1024,
+            scan_limit=2,
+            candidate_limit=10,
+            rerank_limit=5,
+            partial=True,
+            metadata_prefilter=True,
+            use_cache=False,
+        )
+
+    def fake_prefilter(query, windows, *, limit):  # type: ignore[no-untyped-def]
+        del query
+        return list(windows[:limit]), "rust"
+
+    monkeypatch.setattr("app.retrieval.span_executor.build_query_plan", fake_build_query_plan)
+    monkeypatch.setattr(
+        "app.retrieval.span_executor._prefilter_windows_with_backend",
+        fake_prefilter,
+    )
+    projection = RecordingProjection()
+    executor = SpanExecutor(
+        parser_detector=ParserDetector(
+            registry=build_default_parser_registry(),
+            default_parser=PlainTextParser(),
+        ),
+        reranker=HeuristicReranker(),
+        projection=projection,
+        rerank_enabled=False,
+    )
+    documents = [
+        SearchDocument(
+            file_name=f"note-{idx}.txt",
+            content=f"billing issue document {idx}",
+            media_type="text/plain",
+            metadata={
+                "source_id": f"src-{idx}",
+                "source_origin": "stored",
+                "source_type": "upload",
+            },
+        )
+        for idx in range(5)
+    ]
+
+    outcome = executor.execute(query="billing issue", documents=documents, top_k=2)
+
+    assert projection.chunk_count == 2
+    assert outcome.execution["stage0_applied"] is True
+    assert outcome.execution["stage0_backend"] == "rust"
+    assert outcome.execution["stage0_candidates"] == 2
+
+
+def test_span_executor_caps_mrl_input_and_rerank_output(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    class RecordingMrlProjection:
+        def __init__(self) -> None:
+            self.input_count = 0
+
+        def encode_query(self, query: str):  # type: ignore[no-untyped-def]
+            return np.ones(16, dtype=np.float32)
+
+        def encode_chunks(self, chunks):  # type: ignore[no-untyped-def]
+            self.input_count = len(chunks)
+            return np.ones((len(chunks), 16), dtype=np.float32)
+
+        def score(self, query_vec, chunk_vecs):  # type: ignore[no-untyped-def]
+            del query_vec
+            return np.arange(len(chunk_vecs), dtype=np.float32)
+
+    class RecordingReranker:
+        def __init__(self) -> None:
+            self.input_count = 0
+
+        def rerank(self, query, candidates, top_k):  # type: ignore[no-untyped-def]
+            del query
+            self.input_count = len(candidates)
+            return list(candidates)[:top_k]
+
+    def fake_build_query_plan(**kwargs):  # type: ignore[no-untyped-def]
+        return QueryPlan(
+            tier="huge",
+            window_tier="huge",
+            byte_tier="tiny",
+            channels=("exact", "semantic", "structure"),
+            window_count=int(kwargs["window_count"]),
+            bytes_loaded=int(kwargs.get("bytes_loaded", 0)),
+            scan_budget_bytes=1024,
+            scan_limit=int(kwargs["window_count"]),
+            candidate_limit=5_000,
+            rerank_limit=50,
+            partial=False,
+            metadata_prefilter=True,
+            use_cache=False,
+        )
+
+    monkeypatch.setattr("app.retrieval.span_executor.build_query_plan", fake_build_query_plan)
+    mrl_projection = RecordingMrlProjection()
+    reranker = RecordingReranker()
+    executor = SpanExecutor(
+        parser_detector=ParserDetector(
+            registry=build_default_parser_registry(),
+            default_parser=PlainTextParser(),
+        ),
+        reranker=reranker,  # type: ignore[arg-type]
+        projection=DeterministicSemanticProjection(ProjectionConfig(hash_features=64, dim=16)),
+        mrl_projection=mrl_projection,  # type: ignore[arg-type]
+    )
+    documents = [
+        SearchDocument(
+            file_name=f"note-{idx}.txt",
+            content=f"billing issue refund workflow {idx}",
+            media_type="text/plain",
+            metadata={
+                "source_id": f"src-{idx}",
+                "source_origin": "stored",
+                "source_type": "upload",
+            },
+        )
+        for idx in range(5_100)
+    ]
+
+    outcome = executor.execute(query="billing issue", documents=documents, top_k=3)
+
+    assert mrl_projection.input_count == 5_000
+    assert reranker.input_count == 50
+    assert outcome.execution["mrl_input_count"] == 5_000
+    assert outcome.execution["mrl_output_count"] == 50
 
 
 def test_source_windows_keep_neighbor_ids_for_span_expansion() -> None:

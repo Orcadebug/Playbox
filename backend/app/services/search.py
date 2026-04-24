@@ -5,16 +5,21 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.answer.citations import attach_citation_labels
+from app.auth import AuthContext
 from app.config import Settings
-from app.models import Source
+from app.limits import LimitContext
+from app.models import Corpus, Source
+from app.observability import log_event, metrics, new_request_id
 from app.retrieval.bm25_cache import BM25IndexCache
 from app.retrieval.pipeline import RetrievalPipeline
 from app.retrieval.retriever import Bm25Retriever, MultiHeadRetriever, Retriever
@@ -28,6 +33,7 @@ from app.retrieval.sparse_projection import (
     load_best_projection,
     load_projection,
 )
+from app.runtime import artifact_versions, model_mode
 from app.schemas.search import SearchDocument
 
 _log = logging.getLogger(__name__)
@@ -193,6 +199,8 @@ def _get_mrl_projection() -> MrlProjection | None:
             model_path=Path(settings.model_dir) / "mrl" / "model.onnx",
             config=config,
             fallback=DeterministicSemanticProjection(config),
+            query_prefix=settings.waver_mrl_query_prefix,
+            document_prefix=settings.waver_mrl_document_prefix,
         )
     return _mrl_projection
 
@@ -291,7 +299,12 @@ class SearchService:
         include_stored_sources: bool = True,
         answer_mode: str = "off",
         budget_hint: str = "auto",
+        request_id: str | None = None,
+        auth_context: AuthContext | None = None,
+        limit_context: LimitContext | None = None,
     ) -> dict[str, Any]:
+        started_at = perf_counter()
+        request_id = request_id or new_request_id()
         loaded = await self._load_documents(
             workspace_id=workspace_id,
             source_ids=source_ids,
@@ -299,13 +312,20 @@ class SearchService:
             connector_configs=connector_configs,
             include_stored_sources=include_stored_sources,
         )
-        executor = _build_span_executor(self.pipeline)
-        outcome = executor.execute(
+        outcome = self.pipeline.execute(
             query=query,
             documents=loaded.documents,
             top_k=top_k,
             cacheable=loaded.cacheable,
             budget_hint=budget_hint,
+            projection=_get_projection(),
+            mrl_projection=_get_mrl_projection(),
+        )
+        self._enrich_execution(
+            outcome.execution,
+            request_id=request_id,
+            auth_context=auth_context,
+            limit_context=limit_context,
         )
         results = attach_citation_labels([self._serialize_result(r) for r in outcome.final_results])
         answer = None
@@ -314,7 +334,7 @@ class SearchService:
             from app.answer.generator import AnswerGenerator  # noqa: PLC0415
 
             answer, answer_error = await AnswerGenerator().generate(query, results)
-        return {
+        response = {
             "query": query,
             "answer": answer,
             "answer_error": answer_error,
@@ -323,6 +343,13 @@ class SearchService:
             "source_errors": loaded.errors,
             "execution": outcome.execution,
         }
+        self._record_search_observability(
+            request_id=request_id,
+            execution=outcome.execution,
+            result_count=len(results),
+            started_at=started_at,
+        )
+        return response
 
     async def stream_search(
         self,
@@ -335,8 +362,13 @@ class SearchService:
         include_stored_sources: bool = True,
         answer_mode: str = "off",
         budget_hint: str = "auto",
+        request_id: str | None = None,
+        auth_context: AuthContext | None = None,
+        limit_context: LimitContext | None = None,
     ) -> AsyncIterator[str]:
         """Async generator yielding SSE-formatted data lines with search results."""
+        started_at = perf_counter()
+        request_id = request_id or new_request_id()
         loaded = await self._load_documents(
             workspace_id=workspace_id,
             source_ids=source_ids,
@@ -344,14 +376,21 @@ class SearchService:
             connector_configs=connector_configs,
             include_stored_sources=include_stored_sources,
         )
-        executor = _build_span_executor(self.pipeline)
         try:
-            outcome = executor.execute(
+            outcome = self.pipeline.execute(
                 query=query,
                 documents=loaded.documents,
                 top_k=top_k,
                 cacheable=loaded.cacheable,
                 budget_hint=budget_hint,
+                projection=_get_projection(),
+                mrl_projection=_get_mrl_projection(),
+            )
+            self._enrich_execution(
+                outcome.execution,
+                request_id=request_id,
+                auth_context=auth_context,
+                limit_context=limit_context,
             )
             sources_loaded_payload = {
                 "event": "sources_loaded",
@@ -419,6 +458,12 @@ class SearchService:
                 "execution": outcome.execution,
             }
             yield f"data: {json.dumps(done_payload)}\n\n"
+            self._record_search_observability(
+                request_id=request_id,
+                execution=outcome.execution,
+                result_count=len(final_results),
+                started_at=started_at,
+            )
         except Exception as exc:  # pragma: no cover - defensive SSE envelope
             _log.exception("Stream search failed")
             payload = {
@@ -427,6 +472,61 @@ class SearchService:
                 "message": str(exc),
             }
             yield f"data: {json.dumps(payload)}\n\n"
+
+    def _enrich_execution(
+        self,
+        execution: dict[str, Any],
+        *,
+        request_id: str,
+        auth_context: AuthContext | None,
+        limit_context: LimitContext | None,
+    ) -> None:
+        projection = _get_projection()
+        mrl_projection = _get_mrl_projection()
+        execution["request_id"] = request_id
+        execution["auth"] = (
+            auth_context.to_execution()
+            if auth_context is not None
+            else AuthContext(workspace_id="anonymous").to_execution()
+        )
+        execution["limits"] = limit_context.to_execution() if limit_context is not None else {}
+        execution["model_mode"] = model_mode(
+            projection=projection,
+            mrl_projection=mrl_projection,
+            reranker=self.pipeline.reranker,
+        )
+        execution["artifact_versions"] = artifact_versions()
+        execution["latency_gate_profile"] = "small_raw_p95_200ms"
+
+    def _record_search_observability(
+        self,
+        *,
+        request_id: str,
+        execution: dict[str, Any],
+        result_count: int,
+        started_at: float,
+    ) -> None:
+        elapsed_ms = (perf_counter() - started_at) * 1000.0
+        metrics.inc("waver_search_requests_total")
+        metrics.observe("waver_search_latency_ms", elapsed_ms)
+        if execution.get("model_mode") != "real_neural":
+            metrics.inc("waver_search_fallback_mode_total")
+        if execution.get("partial"):
+            metrics.inc("waver_search_partial_scans_total")
+        log_event(
+            "search_request",
+            request_id=request_id,
+            result_count=result_count,
+            elapsed_ms=round(elapsed_ms, 3),
+            model_mode=execution.get("model_mode"),
+            completion_reason=execution.get("completion_reason"),
+            raw_bytes=(execution.get("limits") or {}).get("raw_bytes")
+            if isinstance(execution.get("limits"), dict)
+            else None,
+            workspace_id=(execution.get("auth") or {}).get("workspace_id")
+            if isinstance(execution.get("auth"), dict)
+            else None,
+        )
 
     # --- internals -----------------------------------------------------------
 
@@ -462,10 +562,21 @@ class SearchService:
     async def _load_db_documents(
         self, workspace_id: str, source_ids: list[str] | None
     ) -> list[SearchDocument]:
+        now = datetime.now(UTC)
         query = (
             select(Source)
+            .outerjoin(Corpus, Source.corpus_id == Corpus.id)
             .options(selectinload(Source.documents))
-            .where(Source.workspace_id == workspace_id)
+            .where(
+                Source.workspace_id == workspace_id,
+                or_(
+                    Source.corpus_id.is_(None),
+                    and_(
+                        Corpus.status == "active",
+                        or_(Corpus.expires_at.is_(None), Corpus.expires_at > now),
+                    ),
+                ),
+            )
             .order_by(Source.created_at.desc())
         )
         if source_ids:
@@ -483,6 +594,7 @@ class SearchService:
                         "title": document.title or source.name,
                         "source_type": source.source_type,
                         "source_origin": "stored",
+                        "parser_name": source.parser_name,
                     }
                 )
                 search_docs.append(

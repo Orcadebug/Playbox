@@ -333,3 +333,41 @@ class RetrievalPipeline:
             channels=list(hit.channels),
             channel_scores=dict(hit.channel_scores),
         )
+
+    def execute(
+        self,
+        *,
+        query: str,
+        documents: Sequence[SearchDocument],
+        top_k: int,
+        cacheable: bool = False,
+        budget_hint: str = "auto",
+        projection: object | None = None,
+        mrl_projection: object | None = None,
+        rerank_enabled: bool = True,
+    ):
+        from app.retrieval.span_executor import SpanExecutor  # noqa: PLC0415
+        from app.retrieval.sparse_projection import (  # noqa: PLC0415
+            DeterministicSemanticProjection,
+            ProjectionConfig,
+        )
+
+        executor = SpanExecutor(
+            parser_detector=self.parser_detector,
+            reranker=self.reranker,
+            projection=(
+                projection
+                if projection is not None
+                else self.projection
+                or DeterministicSemanticProjection(ProjectionConfig())
+            ),
+            mrl_projection=mrl_projection,
+            rerank_enabled=rerank_enabled,
+        )
+        return executor.execute(
+            query=query,
+            documents=documents,
+            top_k=top_k,
+            cacheable=cacheable,
+            budget_hint=budget_hint,
+        )

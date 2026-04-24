@@ -9,20 +9,21 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import logging
 from pathlib import Path
 from urllib.request import urlopen
 
 _log = logging.getLogger(__name__)
 
-_HF_BASE = "https://huggingface.co/cross-encoder/ms-marco-MiniLM-L-6-v2/resolve/main"
-_DEFAULT_OUTPUT_DIR = "backend/models/cross-encoder-ms-marco-MiniLM-L-6-v2"
+_HF_REPO = "https://huggingface.co/cross-encoder/ms-marco-MiniLM-L6-v2/resolve/main"
+_DEFAULT_OUTPUT_DIR = "models/cross-encoder-ms-marco-MiniLM-L-6-v2"
 
 _FILES = {
-    "model.onnx": f"{_HF_BASE}/model.onnx",
-    "tokenizer.json": f"{_HF_BASE}/tokenizer.json",
-    "special_tokens_map.json": f"{_HF_BASE}/special_tokens_map.json",
-    "tokenizer_config.json": f"{_HF_BASE}/tokenizer_config.json",
+    "model.onnx": f"{_HF_REPO}/onnx/model.onnx",
+    "tokenizer.json": f"{_HF_REPO}/tokenizer.json",
+    "special_tokens_map.json": f"{_HF_REPO}/special_tokens_map.json",
+    "tokenizer_config.json": f"{_HF_REPO}/tokenizer_config.json",
 }
 
 
@@ -64,9 +65,50 @@ def quantize_model(model_path: Path) -> Path:
         return model_path
 
 
+def sha256_prefix(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    sha = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            sha.update(chunk)
+    return sha.hexdigest()[:16]
+
+
+def write_manifest(model_root: Path) -> None:
+    required = {
+        "projection": Path("models/projection.npz"),
+        "reranker": model_root / "model_quantized.onnx",
+        "reranker_tokenizer": model_root / "tokenizer.json",
+        "mrl": Path("models/mrl/model.onnx"),
+        "mrl_tokenizer": Path("models/mrl/tokenizer.json"),
+    }
+    manifest = {
+        name: {
+            "path": str(path),
+            "present": path.exists(),
+            "sha256_prefix": sha256_prefix(path),
+        }
+        for name, path in required.items()
+    }
+    manifest_path = Path("models/artifacts.json")
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
+    missing = [name for name, data in manifest.items() if not data["present"]]
+    print(f"\nWrote artifact manifest: {manifest_path}")
+    if missing:
+        print("Missing production artifacts:", ", ".join(missing))
+
+
 def main() -> int:
     logging.basicConfig(level=logging.WARNING)
     parser = argparse.ArgumentParser(description="Download Waver ONNX reranker + tokenizer.")
+    parser.add_argument(
+        "--profile",
+        choices=["reranker", "production"],
+        default="reranker",
+        help="Use 'production' to download reranker artifacts and verify the full artifact set.",
+    )
     parser.add_argument(
         "--output-dir",
         default=_DEFAULT_OUTPUT_DIR,
@@ -103,6 +145,12 @@ def main() -> int:
         else:
             print("  ✗ model.onnx not found — cannot quantize")
             return 1
+
+    if args.profile == "production":
+        needs_quantized = not (output_dir / "model_quantized.onnx").exists()
+        if needs_quantized and (output_dir / "model.onnx").exists():
+            quantize_model(output_dir / "model.onnx")
+        write_manifest(output_dir)
 
     print(f"\nDone. Model directory: {output_dir.resolve()}\n")
     return 0

@@ -41,6 +41,12 @@ Waver can currently:
 - Use a BM25 cache only as an optimization for stored-only searches.
 - Search webhook connector payloads transiently; Slack connector code exists but live
   connectors are disabled by default.
+- Enforce beta API keys, quotas, payload limits, readiness checks, and Prometheus-style
+  metrics when deployed with API-key or production mode enabled.
+- Accept raw bytes/text over `/v1/search/ephemeral/raw-stream` so clients can avoid JSON
+  request wrapping for transient payloads.
+- Run a small-raw-payload latency gate (`make latency-gate`) that records p50/p95/p99
+  and validates the documented p95 target for the benchmark profile.
 - Run a support-ticket promise eval that checks exact spans, semantic context,
   dynamic corpus changes, and cold-corpus behavior.
 
@@ -135,6 +141,7 @@ Core search endpoints:
 
 - `POST /api/v1/search`
 - `POST /api/v1/search/stream`
+- `POST /v1/live-search` for OpenAI-style one-shot raw stream search.
 
 Search accepts:
 
@@ -154,10 +161,20 @@ Saved-source endpoints:
 - `GET /api/v1/sources`
 - `DELETE /api/v1/sources/{source_id}`
 
-Beta/API-key work is in progress in this repository. When that flow is enabled, hosted
-usage should mint guest keys, scope workspaces by key, and store only hashed key
-material. Until that is finalized and committed cleanly with migrations, treat local
-API-key behavior as beta infrastructure rather than the core retrieval contract.
+Session-memory endpoints:
+
+- `POST /v1/corpora`: create a short-lived searchable corpus.
+- `GET /v1/corpora`: list active, unexpired corpora.
+- `POST /v1/corpora/{corpus_id}/sources`: upload files or text into a corpus.
+- `POST /v1/corpora/{corpus_id}/search`: search that corpus repeatedly during TTL.
+- `DELETE /v1/corpora/{corpus_id}`: explicitly remove session memory.
+
+Default session corpora use `retention: "session"` and `ttl_seconds: 86400`.
+`retention: "persistent"` is rejected for now; durable production KBs are a separate
+future tier so the live/ad-hoc wedge stays clear.
+
+Hosted/API-key usage scopes live searches, corpora, uploads, and source management to
+the key workspace and stores only hashed key material.
 
 ## Search Example
 
@@ -216,6 +233,36 @@ CSV, JSON, HTML, markdown, and PDF sources may be transformed by parsers first, 
 can report `offset_basis: "parsed"` when offsets refer to normalized parsed text rather
 than raw file bytes.
 
+## Session Memory Example
+
+Create a short-lived corpus for an agent/session/project, upload once, then search it
+without managing a vector DB, collection, schema, embedding job, or sync worker:
+
+```bash
+curl -X POST "$WAVER_API/v1/corpora" \
+  -H "Authorization: Bearer $WAVER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"agent-session","ttl_seconds":86400}'
+```
+
+```bash
+curl -X POST "$WAVER_API/v1/corpora/$CORPUS_ID/sources" \
+  -H "Authorization: Bearer $WAVER_API_KEY" \
+  -F "files=@tickets.ndjson" \
+  -F "files=@logs.txt" \
+  -F "files=@customers.csv"
+```
+
+```bash
+curl -X POST "$WAVER_API/v1/corpora/$CORPUS_ID/search" \
+  -H "Authorization: Bearer $WAVER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"customers threatening to churn over billing errors","top_k":5}'
+```
+
+Expired corpora are hidden from list/search, and `make cleanup-corpora` removes expired
+session memory.
+
 ## Quick Start
 
 1. Copy `.env.example` to `.env` and fill in local values.
@@ -248,6 +295,13 @@ make dev
 Important environment variables:
 
 - `DATABASE_URL`: app database for saved sources and documents.
+- `WAVER_PRODUCTION_MODE`: when `true`, startup fails unless real projection, MRL,
+  tokenizer, reranker, and Rust export checks pass.
+- `WAVER_API_KEYS_REQUIRED`: require `Authorization: Bearer wav_...` on API routes.
+- `WAVER_MAX_RAW_BYTES`, `WAVER_MAX_RAW_SOURCES`, `WAVER_MAX_CONNECTORS`,
+  `WAVER_MAX_TOP_K`, `WAVER_MAX_WINDOWS`: beta request limit controls.
+- `WAVER_DEFAULT_REQUESTS_PER_MINUTE` / `WAVER_DEFAULT_BYTES_PER_MINUTE`: default
+  quotas assigned by `scripts/create_api_key.py`.
 - `SUPABASE_DB_URL`: beta key-storage database when the API-key flow is enabled and
   committed.
 - `OPENROUTER_API_KEY`: enables non-fallback LLM answers.
@@ -279,8 +333,111 @@ Important environment variables:
 - `WAVER_MODEL_DIR`, `WAVER_RERANKER_MODEL`, and reranker settings: cross-encoder
   reranker config knobs. When the Matryoshka runtime is provisioned, its bundle should
   live under `backend/models/mrl/` with `model.onnx` and `tokenizer.json`.
+- `WAVER_MRL_QUERY_PREFIX` / `WAVER_MRL_DOCUMENT_PREFIX`: task prefixes applied before
+  ONNX MRL encoding. The default query prefix matches `mixedbread-ai/mxbai-embed-large-v1`.
 - `WAVER_TINY_MAX_BYTES` / `WAVER_MEDIUM_MAX_BYTES`: planner tier thresholds.
 - `MAX_UPLOAD_BYTES`: upload size ceiling (default 50 MB).
+
+## Production Artifact Bundle
+
+Waver's production semantic path expects five local files under `backend/models/`:
+
+- `projection.npz`: sparse hash-feature projection distilled from a semantic teacher.
+- `mrl/model.onnx` and `mrl/tokenizer.json`: Matryoshka embedding runtime for Rust
+  `waver_core.mrl_encode`.
+- `cross-encoder-ms-marco-MiniLM-L-6-v2/model_quantized.onnx` and `tokenizer.json`:
+  local reranker fallback.
+
+Cheap local build, useful for smoke testing the full artifact path:
+
+```bash
+make artifacts-local
+```
+
+Cheap Kaggle build, useful when local CPU export/training is too slow:
+
+```bash
+chmod 600 ~/.kaggle/kaggle.json
+make artifacts-kaggle
+```
+
+The Kaggle wrapper creates a private GPU-enabled kernel, runs the same export,
+distillation, reranker download, and manifest commands, then downloads
+`waver-artifacts.tar.gz` into `backend/models/kaggle-output/`.
+
+Individual commands from `backend/`:
+
+```bash
+uv run --with torch --with transformers --with "optimum[onnxruntime]" \
+  python scripts/export_mrl_onnx.py --model-id mixedbread-ai/mxbai-embed-large-v1
+uv run python scripts/train_projection.py --teacher mrl --mrl-model models/mrl/model.onnx
+uv run python scripts/download_models.py --profile production --quantize
+uv run python scripts/write_artifact_manifest.py --output models/artifacts.json
+```
+
+`models/artifacts.json` records checksums, projection dimensions, MRL export metadata,
+projection training metrics, and the latest latency/eval reports when present.
+
+## Beta API Keys, Limits, and Metrics
+
+Create a beta API key from `backend/`:
+
+```bash
+uv run python scripts/create_api_key.py --workspace acme-beta --name "Acme dev key"
+```
+
+The printed `wav_...` token is shown once; only its SHA-256 hash is stored. Send it as:
+
+```http
+Authorization: Bearer wav_...
+```
+
+Local development does not require keys unless `WAVER_API_KEYS_REQUIRED=true` or
+`WAVER_PRODUCTION_MODE=true`. Authenticated keys bind requests to their workspace and
+apply in-process request/byte-per-minute quotas. Production deployments should put Redis
+or a shared limiter behind the same quota interface before multi-process scale-out.
+
+Operational endpoints:
+
+- `/api/v1/healthz`: liveness.
+- `/api/v1/readyz`: DB, artifact, and Rust-export readiness.
+- `/metrics`: Prometheus-style counters and latency summaries.
+
+## Raw Stream Search
+
+Use `POST /v1/live-search` or its compatibility alias
+`POST /v1/search/ephemeral/raw-stream` when the source is already raw bytes/text and JSON
+wrapping would add latency or memory churn.
+
+Required query input:
+
+- `X-Waver-Query: <query>` header, or `?query=<query>`.
+
+Optional headers:
+
+- `X-Waver-Top-K`, default `10`.
+- `X-Waver-Source-Name`, default `raw-stream.txt`.
+- `Content-Type`, default `text/plain`.
+
+The endpoint streams `ingest_progress` SSE events followed by the normal retrieval SSE
+events. It feeds GhostProxy while bytes arrive, emits `first_hit` when the first result
+batch appears, and searches the raw source without persisting it.
+
+## Latency Claim Scope
+
+The sub-200ms claim is scoped to the small raw payload gate: `answer_mode="off"`, local
+warm process, documented beta byte limits, and the default ephemeral retrieval path.
+
+Run from the repo root:
+
+```bash
+make latency-gate
+```
+
+The command writes `.reports/latency-gate.json` with p50/p95/p99, payload profile,
+machine info, readiness/artifact status, and model mode. In `WAVER_PRODUCTION_MODE`,
+readiness must pass before the service starts, so benchmark results map to real artifacts
+rather than deterministic development fallback.
 
 ## Promise Eval
 
@@ -348,9 +505,11 @@ stronger frontend checks to keep green.
 
 High-priority product and engineering work:
 
-- Finalize the beta auth/key story. Decide whether API-key generation, Supabase-backed
-  key storage, and key-scoped workspaces are part of the next PR, then commit the
-  route/model/migration/test set together.
+- Replace the in-process quota limiter with Redis or another shared store before
+  horizontally scaling API workers.
+- Build the deeper streaming retrieval engine so semantic `first_hit` can be produced
+  from partial byte streams before full body buffering, not only once the first result
+  batch is available.
 - Reconcile the frontend surface. Either ship a real live search/upload workspace or
   keep the web UI clearly limited to landing, docs, key onboarding, and backend-free
   demo. The README and routes should not drift.
@@ -359,9 +518,9 @@ High-priority product and engineering work:
   and docs.
 - Add frontend e2e coverage. Current confidence is mostly backend tests plus retrieval
   evals.
-- Decide how production users get real semantic projection and reranker model artifacts.
-  Local development can fall back to deterministic/heuristic behavior, but benchmark
-  claims need real-model runs.
+- Publish pinned production projection/MRL artifacts and checksums. The bootstrap script
+  verifies the full artifact set, but projection/MRL artifact hosting is still an
+  operational packaging task.
 - Keep BM25/cortical retrieval experiments and the current span-executor API path
   clearly separated in docs and tests so performance claims map to the path users hit.
 - Expand promise eval coverage beyond support tickets into API payloads, logs, larger
@@ -369,10 +528,8 @@ High-priority product and engineering work:
 - Harden connector support. Webhook payload search is the practical path today; Slack
   needs live-connector enablement, secret handling, rate-limit behavior, and broader
   tests before it should be marketed as production-ready.
-- Add observability around latency, partial scans, connector failures, source load
-  errors, and answer generation failures.
-- Document production limits: max source sizes, supported media types, retention,
-  workspace isolation, quotas, and expected p95 latency by corpus size.
+- Expand observability dashboards and alerts around the metrics endpoint.
+- Document expected p95 latency by corpus size beyond the small raw payload gate.
 
 ## Repository Layout
 
@@ -390,7 +547,8 @@ backend/
     schemas/         API/search schemas
     services/        Search and saved-source orchestration
   tests/             Backend pytest suite and eval fixtures
-  scripts/           download_models.py, train_projection.py, run_*_eval.py
+  scripts/           artifact builders, download_models.py, train_projection.py,
+                     run_*_eval.py
   waver_core/        Rust pyo3 core (rrf_fuse, prefilter_windows, mrl_encode,
                      phrase_search, RustBm25Index). Build: `maturin develop --release`
   waver_ghost/       GhostProxy — fixed-memory Bloom + Count-Min Sketch

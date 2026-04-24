@@ -179,6 +179,16 @@ def _prefilter_windows(
     *,
     limit: int,
 ) -> list[SourceWindow]:
+    filtered, _ = _prefilter_windows_with_backend(query, windows, limit=limit)
+    return filtered
+
+
+def _prefilter_windows_with_backend(
+    query: str,
+    windows: Sequence[SourceWindow],
+    *,
+    limit: int,
+) -> tuple[list[SourceWindow], str]:
     rust_prefilter = get_attr("prefilter_windows")
     if callable(rust_prefilter):
         try:
@@ -190,10 +200,10 @@ def _prefilter_windows(
             by_id = {window.window_id: window for window in windows}
             filtered = [by_id[str(window_id)] for window_id, _ in rows if str(window_id) in by_id]
             if filtered:
-                return filtered
+                return filtered, "rust"
         except Exception:
             pass
-    return _python_prefilter_windows(query, windows, limit=limit)
+    return _python_prefilter_windows(query, windows, limit=limit), "python"
 
 
 @dataclass(slots=True)
@@ -275,11 +285,16 @@ class SpanExecutor:
             budget_hint=budget_hint,  # type: ignore[arg-type]
         )
         stage0_applied = False
+        stage0_backend = "none"
         if plan.tier == "tiny" or len(windows) <= plan.scan_limit:
             scanned_windows = windows[: plan.scan_limit]
         else:
             stage0_applied = True
-            scanned_windows = _prefilter_windows(query, windows, limit=plan.scan_limit)
+            scanned_windows, stage0_backend = _prefilter_windows_with_backend(
+                query,
+                windows,
+                limit=plan.scan_limit,
+            )
 
         if not scanned_windows:
             elapsed_ms = round((perf_counter() - started_at) * 1000.0, 3)
@@ -304,7 +319,11 @@ class SpanExecutor:
                     "final_results": 0,
                 },
                 "stage0_applied": stage0_applied,
+                "stage0_backend": stage0_backend,
+                "stage0_candidates": len(scanned_windows),
                 "mrl_applied": False,
+                "mrl_input_count": 0,
+                "mrl_output_count": 0,
             }
             return SpanExecutionOutcome(
                 plan=plan,
@@ -398,6 +417,8 @@ class SpanExecutor:
         proxy_candidates = limited[:top_k]
         shortlist = limited
         mrl_applied = False
+        mrl_input_count = 0
+        mrl_output_count = 0
         if (
             plan.tier == "huge"
             and self.mrl_projection is not None
@@ -405,6 +426,7 @@ class SpanExecutor:
         ):
             try:
                 mrl_applied = True
+                mrl_input_count = len(shortlist)
                 query_vec = self.mrl_projection.encode_query(query)
                 mrl_chunks = [
                     Chunk(
@@ -422,8 +444,11 @@ class SpanExecutor:
                 ranked_pairs = list(zip(shortlist, mrl_scores, strict=False))
                 ranked_pairs.sort(key=lambda item: (-float(item[1]), item[0].window.window_id))
                 shortlist = [candidate for candidate, _ in ranked_pairs[: plan.rerank_limit]]
+                mrl_output_count = len(shortlist)
             except Exception:
                 mrl_applied = False
+                mrl_input_count = 0
+                mrl_output_count = 0
                 shortlist = limited[: plan.rerank_limit]
         else:
             shortlist = limited[: plan.rerank_limit]
@@ -492,7 +517,11 @@ class SpanExecutor:
                 "final_results": len(final_results),
             },
             "stage0_applied": stage0_applied,
+            "stage0_backend": stage0_backend,
+            "stage0_candidates": len(scanned_windows),
             "mrl_applied": mrl_applied,
+            "mrl_input_count": mrl_input_count,
+            "mrl_output_count": mrl_output_count,
         }
 
         return SpanExecutionOutcome(
