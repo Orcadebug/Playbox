@@ -140,20 +140,37 @@ object.
 SpanExecutor
   |
   |-- planner
-  |     |-- tiny / medium / huge tier
+  |     |-- tiny / medium / huge tier (WAVER_TINY_MAX_BYTES, WAVER_MEDIUM_MAX_BYTES)
   |     |-- scan_limit, candidate_limit, rerank_limit
   |     `-- partial marker
-  |-- exact channel
-  |     |-- QueryTrie token/phrase spans
-  |     |-- substring matches
-  |     `-- regex("...") literals
-  |-- proxy channel
-  |     `-- sparse projection score (NullProjection fallback)
-  |-- structure channel
-  |     `-- metadata/location/neighbor/source-origin boosts
   |
-  |-- rerank shortlist (existing Reranker seam)
-  `-- build SearchResult span payloads
+  |-- Stage-0 prefilter (waver_core.prefilter_windows)
+  |     `-- byte-level trigram overlap; AVX-512 -> AVX2 -> scalar
+  |
+  |-- parallel retrieval heads (MultiHeadRetriever in retriever.py)
+  |     |-- sps    (sps.py: BM25 + sparse projection cosine, alpha=WAVER_SPS_ALPHA)
+  |     |          |-- polarity feature injection when WAVER_SPS_NEGATION=true
+  |     |          `-- DeterministicSemanticProjection fallback (no model artifact)
+  |     |-- bm25   (bm25.py: BM25Okapi; cache used only for stored-only)
+  |     `-- phrase (exact_phrase.py: substring / n-gram matches)
+  |
+  |-- RRF fusion (score = sum 1/(rrf_k + rank + 1), rrf_k=WAVER_RRF_K)
+  |     |-- Python default
+  |     `-- waver_core.rrf_fuse when WAVER_RUST_RRF=true
+  |        (WAVER_RUST_RRF_SHADOW=true runs both and logs deltas)
+  |
+  |-- adaptive budget (pipeline.py)
+  |     `-- expand candidate pool when score spread < WAVER_BUDGET_SPREAD_THRESHOLD
+  |
+  |-- rerank shortlist
+  |     |-- remote gRPC (WAVER_RERANKER_GRPC_TARGET) ->
+  |     |-- local ONNX cross-encoder ->
+  |     `-- heuristic fallback
+  |
+  |-- sentence-level refinement (sentence_scorer.py)
+  |     `-- anchor primary_span to best sentence inside top chunk
+  |
+  `-- build SearchResult span payloads (channels + channel_scores per result)
 ```
 
 BM25 cache policy:
@@ -298,13 +315,66 @@ Saved source appears in /upload and can be included from /search
 
 ---
 
+## Layer 9: Native Runtime (`backend/waver_core/`)
+
+Rust core compiled with `maturin` / `pyo3`, imported as `waver_core`:
+
+```
+waver_core
+  |
+  |-- rrf_fuse(head_results, top_k, rrf_k)    # RRF fusion, gated by WAVER_RUST_RRF
+  |-- prefilter_windows(query, windows, top_k) # AVX-512 / AVX2 / scalar trigram overlap
+  |-- phrase_search(phrases, haystacks, top_k) # substring phrase matcher
+  |-- mrl_encode(model_path, texts, dim, ...)  # ONNX Matryoshka embedding
+  |-- splade_encode(...)                       # reserved hook; Python fallback stays
+  `-- RustBm25Index                            # alt BM25 index
+```
+
+Python wrappers live in `app/retrieval/rust_core.py` and record
+`using_fallback=True` + `fallback_reason` on telemetry when the Rust path cannot
+load or execute.
+
+---
+
+## Layer 10: Edge Short-Circuit (`backend/waver_ghost/`)
+
+Library-only today; not yet wired into the request path.
+
+```
+GhostProxy
+  |
+  |-- Bloom: bytearray bit-array + k hashes via Kirsch-Mitzenmacher over blake2b
+  |-- CMS:   array("I") depth x width, explicit <0xFFFFFFFF saturation guard
+  |-- fixed memory: ~128 KiB bloom + ~2 MiB CMS, regardless of payload size
+  |-- approx_items() via -m/k * ln(1 - bits_set/m)
+  `-- auto reset() when approx_items() exceeds saturation_threshold (default 150k)
+```
+
+Intended use: cheap zero-hit short-circuit for chunked uploads before the main
+retrieval stack is touched.
+
+---
+
+## Layer 11: Optional Stage-2 Reranker Service (`backend/services/reranker/`)
+
+Optional gRPC seam. `WAVER_RERANKER_GRPC_TARGET` points at a remote reranker; the
+backend falls through to local ONNX, then heuristic, recording the tier on
+retrieval telemetry. gRPC stubs are not vendored and must be generated locally
+(`grpc_tools.protoc`) for the remote path to activate.
+
+---
+
 ## Performance Notes
 
 | Component | Optimization | Scope |
 |-----------|--------------|-------|
 | BM25 cache | Reuse stored-only workspace index | Saved sources only |
+| Stage-0 prefilter | AVX-512 / AVX2 / scalar trigram overlap | Candidate pruning before scoring |
+| Rust RRF fusion | `waver_core.rrf_fuse` behind `WAVER_RUST_RRF` | Multi-head fusion |
 | Chunking | Generator path for larger parsed document sets | Query-time parsing |
-| Reranker | ONNX cross-encoder with heuristic fallback | Candidate reranking |
+| Reranker | Remote gRPC → local ONNX cross-encoder → heuristic | Candidate reranking |
+| Adaptive budget | Expand pool on flat score spread | Ambiguous queries |
+| Sentence refinement | Projection-scored sentence anchor | primary_span precision |
 | Cortical retriever | Query trie + projection + diffusion + gating | Alternative retrieval mode |
 | SSE endpoint | Streams response payload | Frontend responsiveness |
 
@@ -330,6 +400,8 @@ Local development can also run the full stack with Docker via `make dev`.
 
 1. **Retrieve first**: search saved, raw, and connector sources from `/search`.
 2. **Span first**: return exact source spans and offsets, not just opaque chunks.
-3. **Persist optionally**: use `/upload` when content should be saved across searches.
-4. **Cache opportunistically**: cache stored-only BM25 indexes; keep raw/connector ephemeral.
-5. **Synthesize optionally**: run LLM answers only with `answer_mode="llm"`.
+3. **Fuse heads**: RRF across SPS (BM25 + projection), BM25, and exact phrase.
+4. **Persist optionally**: use `/upload` when content should be saved across searches.
+5. **Cache opportunistically**: cache stored-only BM25 indexes; keep raw/connector ephemeral.
+6. **Native when available**: Rust `waver_core` accelerates RRF, prefilter, and MRL when present; Python fallback is always live.
+7. **Synthesize optionally**: run LLM answers only with `answer_mode="llm"`.
